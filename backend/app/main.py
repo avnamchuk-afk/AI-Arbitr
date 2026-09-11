@@ -1,9 +1,11 @@
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -11,6 +13,7 @@ from app.db.base import Base
 from app.db.session import engine, get_db
 from app.models.entities import (
     ApprovalStatus,
+    AuthToken,
     ContractParticipant,
     ContractSession,
     ContractVersion,
@@ -49,6 +52,10 @@ class MessageRequest(BaseModel):
 
 
 class VersionRequest(BaseModel):
+    content: str
+
+
+class ChangesRequest(BaseModel):
     content: str
 
 
@@ -146,7 +153,6 @@ def logout(response: Response):
 
 @app.post("/sessions")
 def create_session(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-
     session = ContractSession(owner_user_id=user.id)
     db.add(session)
     db.flush()
@@ -161,17 +167,107 @@ def create_session(user: User = Depends(get_current_user), db: Session = Depends
 def list_sessions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return (
         db.query(ContractSession)
-        .filter(ContractSession.owner_user_id == user.id)
+        .join(ContractParticipant, ContractParticipant.session_id == ContractSession.id)
+        .filter(or_(ContractSession.owner_user_id == user.id, ContractParticipant.user_id == user.id))
+        .distinct()
         .order_by(ContractSession.updated_at.desc())
         .all()
     )
 
 
-@app.post("/sessions/{session_id}/messages")
-async def send_message(session_id: str, payload: MessageRequest, db: Session = Depends(get_db)):
+@app.get("/sessions/{session_id}")
+def get_session(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    session = get_accessible_session(db, session_id, user)
+    latest_version = get_latest_version(db, session)
+    return {
+        "session": session,
+        "participants": session.participants,
+        "versions": session.versions,
+        "latest_version": latest_version,
+        "messages": session.messages,
+    }
+
+
+def get_accessible_session(db: Session, session_id: str, user: User) -> ContractSession:
     session = db.get(ContractSession, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Сессия не найдена")
+
+    participant = (
+        db.query(ContractParticipant)
+        .filter(ContractParticipant.session_id == session.id, ContractParticipant.user_id == user.id)
+        .one_or_none()
+    )
+    if session.owner_user_id != user.id and participant is None:
+        raise HTTPException(status_code=403, detail="Нет доступа к договору")
+    return session
+
+
+def get_latest_version(db: Session, session: ContractSession) -> ContractVersion | None:
+    return (
+        db.query(ContractVersion)
+        .filter(ContractVersion.session_id == session.id)
+        .order_by(ContractVersion.version_number.desc())
+        .first()
+    )
+
+
+def get_user_participant(db: Session, session: ContractSession, user: User) -> ContractParticipant:
+    participant = (
+        db.query(ContractParticipant)
+        .filter(ContractParticipant.session_id == session.id, ContractParticipant.user_id == user.id)
+        .one_or_none()
+    )
+    if participant is None:
+        raise HTTPException(status_code=403, detail="Пользователь не является стороной договора")
+    return participant
+
+
+@app.post("/sessions/{session_id}/invite")
+def create_invite(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    session = db.get(ContractSession, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Сессия не найдена")
+    if session.owner_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Приглашение может создать только Сторона 1")
+    if session.invite_token is None:
+        session.invite_token = uuid.uuid4()
+        db.commit()
+        db.refresh(session)
+    return {"invite_link": f"{settings.app_base_url}/invite/{session.invite_token}"}
+
+
+@app.post("/invites/{invite_token}/accept")
+def accept_invite(invite_token: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    session = db.query(ContractSession).filter(ContractSession.invite_token == invite_token).one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Приглашение не найдено")
+    if session.owner_user_id == user.id:
+        raise HTTPException(status_code=400, detail="Сторона 1 уже привязана к договору")
+
+    participant = (
+        db.query(ContractParticipant)
+        .filter(ContractParticipant.session_id == session.id, ContractParticipant.role == ParticipantRole.party_2)
+        .one()
+    )
+    if participant.user_id is None:
+        participant.user_id = user.id
+        participant.joined_at = now_utc()
+        db.commit()
+    elif participant.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Приглашение уже принято другой стороной")
+
+    return {"session_id": session.id}
+
+
+@app.post("/sessions/{session_id}/messages")
+async def send_message(
+    session_id: str,
+    payload: MessageRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = get_accessible_session(db, session_id, user)
 
     if session.status == SessionStatus.finalized and not payload.content.strip().upper().startswith("СПОР"):
         return {
@@ -213,10 +309,15 @@ async def send_message(session_id: str, payload: MessageRequest, db: Session = D
 
 
 @app.post("/sessions/{session_id}/versions")
-def create_version(session_id: str, payload: VersionRequest, db: Session = Depends(get_db)):
-    session = db.get(ContractSession, session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Сессия не найдена")
+def create_version(
+    session_id: str,
+    payload: VersionRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = get_accessible_session(db, session_id, user)
+    if session.status == SessionStatus.finalized:
+        raise HTTPException(status_code=400, detail="Финализированный договор нельзя изменить")
 
     version_count = db.query(ContractVersion).filter(ContractVersion.session_id == session.id).count()
     version = ContractVersion(
@@ -232,4 +333,59 @@ def create_version(session_id: str, payload: VersionRequest, db: Session = Depen
     db.commit()
     db.refresh(version)
     return version
-    AuthToken,
+
+
+@app.post("/sessions/{session_id}/approve")
+def approve_version(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    session = get_accessible_session(db, session_id, user)
+    latest_version = get_latest_version(db, session)
+    if latest_version is None:
+        raise HTTPException(status_code=400, detail="Нет версии договора для согласования")
+
+    participant = get_user_participant(db, session, user)
+    participant.approval_status = ApprovalStatus.approved
+    participant.approved_version_id = latest_version.id
+
+    participants = session.participants
+    both_approved = all(
+        item.user_id is not None
+        and item.approval_status == ApprovalStatus.approved
+        and item.approved_version_id == latest_version.id
+        for item in participants
+    )
+    if both_approved:
+        session.status = SessionStatus.finalized
+        session.finalized_at = now_utc()
+        session.download_token = session.download_token or uuid.uuid4()
+        session.is_completed = True
+        latest_version.is_final = True
+
+    db.commit()
+    return {"finalized": both_approved, "status": session.status}
+
+
+@app.post("/sessions/{session_id}/request-changes")
+def request_changes(
+    session_id: str,
+    payload: ChangesRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = get_accessible_session(db, session_id, user)
+    if session.status == SessionStatus.finalized:
+        raise HTTPException(status_code=400, detail="Финализированный договор нельзя изменить")
+
+    participant = get_user_participant(db, session, user)
+    participant.approval_status = ApprovalStatus.changes_requested
+    db.add(
+        Message(
+            session_id=session.id,
+            role=MessageRole.user,
+            content=f"Запрошены правки ({participant.role.value}): {payload.content}",
+        )
+    )
+    for item in session.participants:
+        item.approval_status = ApprovalStatus.pending
+        item.approved_version_id = None
+    db.commit()
+    return {"message": "Правки зафиксированы. Следующим шагом AI сформирует новую версию договора."}

@@ -155,6 +155,21 @@ button {
   padding: 24px;
 }
 
+.work-area {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 18px;
+}
+
+.dialogue {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .empty-state {
   margin: auto;
   max-width: 680px;
@@ -180,6 +195,85 @@ button {
   flex-direction: column;
   gap: 12px;
   padding-bottom: 18px;
+}
+
+.contract-panel {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.panel-header span {
+  color: #6c7581;
+  font-size: 13px;
+}
+
+.contract-panel textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  border: 1px solid #cfd7e2;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.contract-panel textarea.changes {
+  min-height: 90px;
+}
+
+.panel-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.panel-actions button,
+.contract-panel .secondary,
+.copy-link {
+  min-height: 40px;
+  border: 1px solid #cfd7e2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1c2430;
+}
+
+.panel-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.copy-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+  padding: 8px;
+  text-align: left;
+}
+
+.approvals {
+  display: grid;
+  gap: 4px;
+  color: #4e5966;
+  font-size: 13px;
+}
+
+.approvals p {
+  margin: 0;
 }
 
 .message {
@@ -259,5 +353,9 @@ button {
 
   .chat-area {
     padding: 72px 14px 18px;
+  }
+
+  .work-area {
+    grid-template-columns: 1fr;
   }
 }

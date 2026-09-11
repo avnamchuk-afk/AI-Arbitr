@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { LogOut, Menu, Plus, Send } from "lucide-react";
+import { Check, Copy, LogOut, Menu, Plus, Send } from "lucide-react";
 import "./styles.css";
 
 const API_URL = "http://localhost:8000";
 
 function App() {
   const [email, setEmail] = useState("");
+  const [userId, setUserId] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -17,8 +18,15 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loginNotice, setLoginNotice] = useState("");
   const [devLink, setDevLink] = useState("");
+  const [sessionDetail, setSessionDetail] = useState(null);
+  const [inviteLink, setInviteLink] = useState("");
+  const [contractText, setContractText] = useState("");
+  const [changesText, setChangesText] = useState("");
+
+  const pendingInvite = getInviteTokenFromPath();
 
   useEffect(() => {
+    if (pendingInvite) localStorage.setItem("ai-arbitr-pending-invite", pendingInvite);
     fetch(`${API_URL}/auth/me`, { credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("not authed");
@@ -26,10 +34,11 @@ function App() {
       })
       .then((user) => {
         setEmail(user.email);
+        setUserId(user.id);
         setAuthed(true);
       })
       .catch(() => setAuthed(false));
-  }, []);
+  }, [pendingInvite]);
 
   useEffect(() => {
     localStorage.setItem("ai-arbitr-draft", draft);
@@ -42,6 +51,43 @@ function App() {
       .then(setSessions)
       .catch(() => setSessions([]));
   }, [authed, email]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const token = localStorage.getItem("ai-arbitr-pending-invite");
+    if (!token) return;
+    fetch(`${API_URL}/invites/${token}/accept`, { method: "POST", credentials: "include" })
+      .then((res) => {
+        if (!res.ok) throw new Error("invite failed");
+        return res.json();
+      })
+      .then((data) => {
+        localStorage.removeItem("ai-arbitr-pending-invite");
+        loadSession(data.session_id);
+        window.history.replaceState({}, "", "/");
+      })
+      .catch(() => setLoginNotice("Приглашение недействительно или уже принято другой стороной"));
+  }, [authed]);
+
+  useEffect(() => {
+    if (!currentSession) return;
+    loadSession(currentSession.id);
+  }, [currentSession?.id]);
+
+  function getInviteTokenFromPath() {
+    const match = window.location.pathname.match(/^\/invite\/([^/]+)$/);
+    return match ? match[1] : "";
+  }
+
+  async function loadSession(sessionId) {
+    const response = await fetch(`${API_URL}/sessions/${sessionId}`, { credentials: "include" });
+    if (!response.ok) return;
+    const detail = await response.json();
+    setSessionDetail(detail);
+    setCurrentSession(detail.session);
+    setMessages(detail.messages || []);
+    setContractText(detail.latest_version?.content || "");
+  }
 
   async function login(event) {
     event.preventDefault();
@@ -65,6 +111,10 @@ function App() {
     });
     const session = await response.json();
     setCurrentSession(session);
+    setSessionDetail(null);
+    setInviteLink("");
+    setContractText("");
+    setChangesText("");
     setSessions([session, ...sessions]);
     setMessages([]);
     setSidebarOpen(false);
@@ -85,8 +135,52 @@ function App() {
       });
       const data = await response.json();
       setMessages((items) => [...items, { role: "assistant", content: data.content }]);
+      loadSession(currentSession.id);
     } finally {
       setThinking(false);
+    }
+  }
+
+  async function saveVersion() {
+    if (!contractText.trim() || !currentSession) return;
+    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/versions`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: contractText }),
+    });
+    if (response.ok) loadSession(currentSession.id);
+  }
+
+  async function createInvite() {
+    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/invite`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    setInviteLink(data.invite_link);
+  }
+
+  async function approve() {
+    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/approve`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (response.ok) loadSession(currentSession.id);
+  }
+
+  async function requestChanges() {
+    if (!changesText.trim()) return;
+    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/request-changes`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: changesText }),
+    });
+    if (response.ok) {
+      setChangesText("");
+      loadSession(currentSession.id);
     }
   }
 
@@ -142,6 +236,8 @@ function App() {
               key={session.id}
               onClick={() => {
                 setCurrentSession(session);
+                setInviteLink("");
+                setChangesText("");
                 setSidebarOpen(false);
               }}
             >
@@ -167,13 +263,61 @@ function App() {
           </div>
         ) : (
           <>
-            <div className="messages">
-              {messages.map((message, index) => (
-                <article key={index} className={`message ${message.role}`}>
-                  {message.content}
-                </article>
-              ))}
-              {thinking && <article className="message assistant">Арби думает...</article>}
+            <div className="work-area">
+              <div className="dialogue">
+                <div className="messages">
+                  {messages.map((message, index) => (
+                    <article key={index} className={`message ${message.role}`}>
+                      {message.content}
+                    </article>
+                  ))}
+                  {thinking && <article className="message assistant">Арби думает...</article>}
+                </div>
+              </div>
+              <aside className="contract-panel">
+                <div className="panel-header">
+                  <strong>Версия договора</strong>
+                  <span>{currentSession.status}</span>
+                </div>
+                <textarea
+                  value={contractText}
+                  onChange={(event) => setContractText(event.target.value)}
+                  placeholder="Вставьте или отредактируйте текущую версию договора"
+                />
+                <div className="panel-actions">
+                  <button onClick={saveVersion}>Сохранить версию</button>
+                  <button onClick={approve}>
+                    <Check size={16} /> Согласен
+                  </button>
+                </div>
+                <textarea
+                  className="changes"
+                  value={changesText}
+                  onChange={(event) => setChangesText(event.target.value)}
+                  placeholder="Предложить правки"
+                />
+                <button className="secondary" onClick={requestChanges}>
+                  Отправить правки
+                </button>
+                {sessionDetail?.participants && (
+                  <div className="approvals">
+                    {sessionDetail.participants.map((participant) => (
+                      <p key={participant.id}>
+                        {participant.role === "party_1" ? "Сторона 1" : "Сторона 2"}:{" "}
+                        {participant.approval_status}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                <button className="secondary" onClick={createInvite}>
+                  Создать ссылку для Стороны 2
+                </button>
+                {inviteLink && (
+                  <button className="copy-link" onClick={() => navigator.clipboard?.writeText(inviteLink)}>
+                    <Copy size={16} /> {inviteLink}
+                  </button>
+                )}
+              </aside>
             </div>
             <div className="composer">
               <textarea
