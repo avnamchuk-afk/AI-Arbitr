@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Check, Copy, Download, LogOut, Menu, Plus, Send } from "lucide-react";
 import "./styles.css";
 
-const API_URL = "http://localhost:8000";
+const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
 
 function App() {
   const [email, setEmail] = useState("");

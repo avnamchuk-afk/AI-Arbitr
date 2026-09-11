@@ -9,7 +9,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
+from app.core.config import get_cors_origins, settings
 from app.db.base import Base
 from app.db.session import engine, get_db
 from app.models.entities import (
@@ -38,7 +38,7 @@ app = FastAPI(title="AI-Arbitr API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -150,7 +150,12 @@ def auth_me(user: User = Depends(get_current_user)):
 
 @app.post("/auth/logout")
 def logout(response: Response):
-    response.delete_cookie(settings.session_cookie_name)
+    response.delete_cookie(
+        settings.session_cookie_name,
+        secure=settings.app_env != "local",
+        httponly=True,
+        samesite="lax",
+    )
     return {"message": "ok"}
 
 

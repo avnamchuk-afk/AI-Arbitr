@@ -20,6 +20,10 @@ docker compose up --build
 Frontend: http://localhost:5173
 Backend API: http://localhost:8000/docs
 
+## Тестовый деплой
+
+Инструкция для получения публичной ссылки на Yandex Cloud VM: [DEPLOY.md](DEPLOY.md).
+
 ## Важные переменные
 
 Все секреты задаются в `.env`; ключи и токены не должны попадать в git.

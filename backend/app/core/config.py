@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     app_secret_key: str
     database_url: str
     session_cookie_name: str = "ai_arbitr_session"
+    cors_origins: str = "http://localhost:5173"
 
     smtp_host: str = "smtp.yandex.ru"
     smtp_port: int = 465
@@ -23,3 +24,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_cors_origins() -> list[str]:
+    return [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
