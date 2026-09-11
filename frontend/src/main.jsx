@@ -136,6 +136,9 @@ function App() {
       });
       const data = await response.json();
       setMessages((items) => [...items, { role: "assistant", content: data.content }]);
+      if (data.contract_saved) {
+        setAppNotice("Проект договора сгенерирован и сохранен как текущая версия.");
+      }
       loadSession(currentSession.id);
     } finally {
       setThinking(false);

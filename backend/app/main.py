@@ -262,6 +262,21 @@ def format_history(messages: list[Message]) -> str:
     )
 
 
+def save_contract_version(db: Session, session: ContractSession, content: str) -> ContractVersion:
+    version_count = db.query(ContractVersion).filter(ContractVersion.session_id == session.id).count()
+    version = ContractVersion(
+        session_id=session.id,
+        version_number=version_count + 1,
+        content=content,
+    )
+    session.status = SessionStatus.in_review
+    for participant in session.participants:
+        participant.approval_status = ApprovalStatus.pending
+        participant.approved_version_id = None
+    db.add(version)
+    return version
+
+
 @app.post("/sessions/{session_id}/invite")
 def create_invite(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = db.get(ContractSession, session_id)
@@ -332,6 +347,7 @@ async def send_message(
     db.commit()
 
     try:
+        should_save_contract_version = session.status != SessionStatus.finalized
         if session.status == SessionStatus.finalized and is_dispute:
             final_version = get_final_version(db, session)
             if final_version is None:
@@ -346,18 +362,31 @@ async def send_message(
         else:
             prompt = [
                 {"role": "system", "text": CONTRACT_SYSTEM_PROMPT},
-                {"role": "user", "text": payload.content},
+                {
+                    "role": "user",
+                    "text": (
+                        "Сгенерируй полный проект договора по следующему запросу. "
+                        "Ответ должен быть именно текстом договора, без предварительных пояснений.\n\n"
+                        f"Запрос пользователя:\n{payload.content}"
+                    ),
+                },
             ]
         answer = await ask_yandex_gpt(
             prompt
         )
     except YandexGPTError:
-        answer = "Сервис временно недоступен. Попробуйте через минуту."
+        should_save_contract_version = False
+        answer = (
+            "YandexGPT пока не настроен. Добавьте YANDEX_GPT_API_KEY и "
+            "YANDEX_GPT_FOLDER_ID в .env, чтобы генерировать проекты договоров."
+        )
 
     answer = warning + answer
     db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+    if should_save_contract_version:
+        save_contract_version(db, session, answer)
     db.commit()
-    return {"content": answer}
+    return {"content": answer, "contract_saved": should_save_contract_version}
 
 
 @app.post("/sessions/{session_id}/versions")
@@ -371,17 +400,7 @@ def create_version(
     if session.status == SessionStatus.finalized:
         raise HTTPException(status_code=400, detail="Финализированный договор нельзя изменить")
 
-    version_count = db.query(ContractVersion).filter(ContractVersion.session_id == session.id).count()
-    version = ContractVersion(
-        session_id=session.id,
-        version_number=version_count + 1,
-        content=payload.content,
-    )
-    session.status = SessionStatus.in_review
-    for participant in session.participants:
-        participant.approval_status = ApprovalStatus.pending
-        participant.approved_version_id = None
-    db.add(version)
+    version = save_contract_version(db, session, payload.content)
     db.commit()
     db.refresh(version)
     return version

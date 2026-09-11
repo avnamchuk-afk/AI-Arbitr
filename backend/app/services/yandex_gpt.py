@@ -9,10 +9,7 @@ class YandexGPTError(RuntimeError):
 
 async def ask_yandex_gpt(messages: list[dict[str, str]]) -> str:
     if not settings.yandex_gpt_api_key or not settings.yandex_gpt_folder_id:
-        return (
-            "YandexGPT пока не настроен. Добавьте YANDEX_GPT_API_KEY и "
-            "YANDEX_GPT_FOLDER_ID в .env."
-        )
+        raise YandexGPTError("YandexGPT is not configured")
 
     model_uri = settings.yandex_gpt_model_uri or f"gpt://{settings.yandex_gpt_folder_id}/yandexgpt/latest"
     payload = {
