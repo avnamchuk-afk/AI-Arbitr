@@ -88,6 +88,7 @@ class ContractParticipant(Base):
     joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     session: Mapped[ContractSession] = relationship(back_populates="participants")
+    user: Mapped[User | None] = relationship()
 
 
 class Message(Base):

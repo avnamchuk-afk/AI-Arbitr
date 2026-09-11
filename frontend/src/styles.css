@@ -241,7 +241,8 @@ button {
 
 .panel-actions button,
 .contract-panel .secondary,
-.copy-link {
+.copy-link,
+.download-button {
   min-height: 40px;
   border: 1px solid #cfd7e2;
   border-radius: 8px;
@@ -249,11 +250,17 @@ button {
   color: #1c2430;
 }
 
-.panel-actions button {
+.panel-actions button,
+.download-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+}
+
+.download-button {
+  border-color: #16635b;
+  color: #16635b;
 }
 
 .copy-link {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Check, Copy, LogOut, Menu, Plus, Send } from "lucide-react";
+import { Check, Copy, Download, LogOut, Menu, Plus, Send } from "lucide-react";
 import "./styles.css";
 
 const API_URL = "http://localhost:8000";
@@ -184,6 +184,12 @@ function App() {
     }
   }
 
+  function downloadPdf() {
+    const token = sessionDetail?.session?.download_token || currentSession?.download_token;
+    if (!token) return;
+    window.open(`${API_URL}/download/${token}.pdf`, "_blank", "noopener,noreferrer");
+  }
+
   if (!authed) {
     return (
       <main className="login-page">
@@ -290,6 +296,11 @@ function App() {
                     <Check size={16} /> Согласен
                   </button>
                 </div>
+                {(sessionDetail?.session?.download_token || currentSession.download_token) && (
+                  <button className="download-button" onClick={downloadPdf}>
+                    <Download size={16} /> Скачать PDF
+                  </button>
+                )}
                 <textarea
                   className="changes"
                   value={changesText}

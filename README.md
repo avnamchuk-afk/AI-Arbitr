@@ -51,3 +51,4 @@ Backend API: http://localhost:8000/docs
 - `POST /sessions/{id}/versions` - сохранение новой версии договора.
 - `POST /sessions/{id}/approve` - согласие текущей стороны с последней версией.
 - `POST /sessions/{id}/request-changes` - фиксация запроса на правки.
+- `GET /download/{token}.pdf` - скачивание финализированного договора и истории.

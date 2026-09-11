@@ -1,9 +1,10 @@
 import uuid
+from io import BytesIO
 from datetime import datetime, timezone
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -26,6 +27,7 @@ from app.models.entities import (
 )
 from app.services.auth import generate_raw_token, hash_token, make_session_cookie, read_session_cookie, token_expires_at
 from app.services.email import send_magic_link, smtp_is_configured
+from app.services.pdf import build_contract_pdf
 from app.services.privacy import contains_passport_like_data
 from app.services.yandex_gpt import YandexGPTError, ask_yandex_gpt
 
@@ -389,3 +391,33 @@ def request_changes(
         item.approved_version_id = None
     db.commit()
     return {"message": "Правки зафиксированы. Следующим шагом AI сформирует новую версию договора."}
+
+
+@app.get("/download/{download_token}.pdf")
+def download_contract_pdf(download_token: str, db: Session = Depends(get_db)):
+    session = db.query(ContractSession).filter(ContractSession.download_token == download_token).one_or_none()
+    if session is None or session.status != SessionStatus.finalized:
+        raise HTTPException(status_code=404, detail="Финализированный договор не найден")
+
+    final_version = (
+        db.query(ContractVersion)
+        .filter(ContractVersion.session_id == session.id, ContractVersion.is_final.is_(True))
+        .order_by(ContractVersion.version_number.desc())
+        .first()
+    )
+    if final_version is None:
+        raise HTTPException(status_code=404, detail="Финальная версия договора не найдена")
+
+    messages = (
+        db.query(Message)
+        .filter(Message.session_id == session.id)
+        .order_by(Message.created_at.asc())
+        .all()
+    )
+    pdf_bytes = build_contract_pdf(session, final_version, session.participants, messages)
+    filename = f"ai-arbitr-{session.id}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
