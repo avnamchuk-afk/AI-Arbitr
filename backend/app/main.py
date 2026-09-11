@@ -1,8 +1,12 @@
-from fastapi import Depends, FastAPI, HTTPException
+from datetime import datetime, timezone
+
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine, get_db
 from app.models.entities import (
@@ -15,7 +19,10 @@ from app.models.entities import (
     ParticipantRole,
     SessionStatus,
     User,
+    now_utc,
 )
+from app.services.auth import generate_raw_token, hash_token, make_session_cookie, read_session_cookie, token_expires_at
+from app.services.email import send_magic_link, smtp_is_configured
 from app.services.privacy import contains_passport_like_data
 from app.services.yandex_gpt import YandexGPTError, ask_yandex_gpt
 
@@ -37,10 +44,6 @@ class LoginRequest(BaseModel):
     personal_data_accepted: bool
 
 
-class SessionCreateRequest(BaseModel):
-    email: EmailStr
-
-
 class MessageRequest(BaseModel):
     content: str
 
@@ -54,6 +57,30 @@ def health():
     return {"status": "ok"}
 
 
+def set_auth_cookie(response: Response, user: User) -> None:
+    response.set_cookie(
+        settings.session_cookie_name,
+        make_session_cookie(str(user.id)),
+        max_age=60 * 60 * 24 * 30,
+        httponly=True,
+        secure=settings.app_env != "local",
+        samesite="lax",
+    )
+
+
+def get_current_user(
+    db: Session = Depends(get_db),
+    session_cookie: str | None = Cookie(default=None, alias=settings.session_cookie_name),
+) -> User:
+    user_id = read_session_cookie(session_cookie)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Требуется вход")
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Требуется вход")
+    return user
+
+
 @app.post("/auth/magic-link")
 def request_magic_link(payload: LoginRequest, db: Session = Depends(get_db)):
     if not payload.personal_data_accepted:
@@ -63,18 +90,62 @@ def request_magic_link(payload: LoginRequest, db: Session = Depends(get_db)):
     if user is None:
         user = User(email=payload.email)
         db.add(user)
-        db.commit()
+        db.flush()
 
-    return {"message": "MVP: пользователь создан. Отправку email подключим после настройки SMTP."}
+    raw_token = generate_raw_token()
+    db.add(
+        AuthToken(
+            email=payload.email,
+            token_hash=hash_token(raw_token),
+            expires_at=token_expires_at(),
+        )
+    )
+    db.commit()
+
+    verify_link = f"{settings.api_base_url}/auth/verify?token={raw_token}"
+    send_magic_link(payload.email, verify_link)
+
+    response = {"message": "Ссылка для входа отправлена на вашу почту"}
+    if settings.app_env == "local" and not smtp_is_configured():
+        response["dev_link"] = verify_link
+    return response
+
+
+@app.get("/auth/verify")
+def verify_magic_link(token: str, db: Session = Depends(get_db)):
+    token_hash = hash_token(token)
+    auth_token = db.query(AuthToken).filter(AuthToken.token_hash == token_hash).one_or_none()
+    if auth_token is None or auth_token.used or auth_token.expires_at < datetime.now(timezone.utc):
+        return RedirectResponse(f"{settings.app_base_url}/login?error=expired", status_code=303)
+
+    user = db.query(User).filter(User.email == auth_token.email).one_or_none()
+    if user is None:
+        user = User(email=auth_token.email)
+        db.add(user)
+        db.flush()
+
+    user.last_login_at = now_utc()
+    auth_token.used = True
+    db.commit()
+
+    response = RedirectResponse(f"{settings.app_base_url}/?login=success", status_code=303)
+    set_auth_cookie(response, user)
+    return response
+
+
+@app.get("/auth/me")
+def auth_me(user: User = Depends(get_current_user)):
+    return {"id": user.id, "email": user.email}
+
+
+@app.post("/auth/logout")
+def logout(response: Response):
+    response.delete_cookie(settings.session_cookie_name)
+    return {"message": "ok"}
 
 
 @app.post("/sessions")
-def create_session(payload: SessionCreateRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == payload.email).one_or_none()
-    if user is None:
-        user = User(email=payload.email)
-        db.add(user)
-        db.flush()
+def create_session(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
 
     session = ContractSession(owner_user_id=user.id)
     db.add(session)
@@ -87,10 +158,7 @@ def create_session(payload: SessionCreateRequest, db: Session = Depends(get_db))
 
 
 @app.get("/sessions")
-def list_sessions(email: EmailStr, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == email).one_or_none()
-    if user is None:
-        return []
+def list_sessions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return (
         db.query(ContractSession)
         .filter(ContractSession.owner_user_id == user.id)
@@ -164,3 +232,4 @@ def create_version(session_id: str, payload: VersionRequest, db: Session = Depen
     db.commit()
     db.refresh(version)
     return version
+    AuthToken,

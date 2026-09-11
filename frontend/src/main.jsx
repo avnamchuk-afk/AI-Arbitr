@@ -6,15 +6,30 @@ import "./styles.css";
 const API_URL = "http://localhost:8000";
 
 function App() {
-  const [email, setEmail] = useState(localStorage.getItem("ai-arbitr-email") || "");
+  const [email, setEmail] = useState("");
   const [accepted, setAccepted] = useState(false);
-  const [authed, setAuthed] = useState(Boolean(email));
+  const [authed, setAuthed] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [currentSession, setCurrentSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState(localStorage.getItem("ai-arbitr-draft") || "");
   const [thinking, setThinking] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loginNotice, setLoginNotice] = useState("");
+  const [devLink, setDevLink] = useState("");
+
+  useEffect(() => {
+    fetch(`${API_URL}/auth/me`, { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) throw new Error("not authed");
+        return res.json();
+      })
+      .then((user) => {
+        setEmail(user.email);
+        setAuthed(true);
+      })
+      .catch(() => setAuthed(false));
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("ai-arbitr-draft", draft);
@@ -22,7 +37,7 @@ function App() {
 
   useEffect(() => {
     if (!authed || !email) return;
-    fetch(`${API_URL}/sessions?email=${encodeURIComponent(email)}`)
+    fetch(`${API_URL}/sessions`, { credentials: "include" })
       .then((res) => res.json())
       .then(setSessions)
       .catch(() => setSessions([]));
@@ -32,19 +47,21 @@ function App() {
     event.preventDefault();
     const response = await fetch(`${API_URL}/auth/magic-link`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, personal_data_accepted: accepted }),
     });
     if (!response.ok) return;
-    localStorage.setItem("ai-arbitr-email", email);
-    setAuthed(true);
+    const data = await response.json();
+    setLoginNotice(data.message);
+    setDevLink(data.dev_link || "");
   }
 
   async function createSession() {
     const response = await fetch(`${API_URL}/sessions`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
     });
     const session = await response.json();
     setCurrentSession(session);
@@ -62,6 +79,7 @@ function App() {
     try {
       const response = await fetch(`${API_URL}/sessions/${currentSession.id}/messages`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
       });
@@ -83,6 +101,12 @@ function App() {
             <span>Я согласен на обработку персональных данных</span>
           </label>
           <button>Отправить ссылку для входа</button>
+          {loginNotice && <p className="notice">{loginNotice}</p>}
+          {devLink && (
+            <a className="dev-link" href={devLink}>
+              Dev-вход без SMTP
+            </a>
+          )}
           <a href="/privacy">Политика конфиденциальности</a>
         </form>
       </main>
@@ -99,8 +123,11 @@ function App() {
           <strong>{email}</strong>
           <button
             onClick={() => {
-              localStorage.removeItem("ai-arbitr-email");
-              setAuthed(false);
+              fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" }).finally(() => {
+                setAuthed(false);
+                setSessions([]);
+                setCurrentSession(null);
+              });
             }}
           >
             <LogOut size={16} /> Выход

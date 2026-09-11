@@ -59,6 +59,23 @@ button {
   font-size: 14px;
 }
 
+.notice {
+  margin: 0;
+  color: #16635b;
+  font-size: 14px;
+}
+
+.dev-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #16635b;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #16635b;
+  text-decoration: none;
+}
+
 .login-form button,
 .empty-state button,
 .new-contract {

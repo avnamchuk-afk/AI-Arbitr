@@ -4,8 +4,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "local"
     app_base_url: str = "http://localhost:5173"
+    api_base_url: str = "http://localhost:8000"
     app_secret_key: str
     database_url: str
+    session_cookie_name: str = "ai_arbitr_session"
 
     smtp_host: str = "smtp.yandex.ru"
     smtp_port: int = 465
