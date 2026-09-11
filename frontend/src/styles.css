@@ -163,6 +163,15 @@ button {
   gap: 18px;
 }
 
+.app-notice {
+  margin-bottom: 12px;
+  border: 1px solid #9fc6bd;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #14514b;
+  background: #e8f5f2;
+}
+
 .dialogue {
   min-width: 0;
   min-height: 0;

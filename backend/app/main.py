@@ -1,6 +1,6 @@
 import uuid
 from io import BytesIO
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +29,7 @@ from app.services.auth import generate_raw_token, hash_token, make_session_cooki
 from app.services.email import send_magic_link, smtp_is_configured
 from app.services.pdf import build_contract_pdf
 from app.services.privacy import contains_passport_like_data
+from app.services.prompts import CONTRACT_SYSTEM_PROMPT, build_dispute_prompt
 from app.services.yandex_gpt import YandexGPTError, ask_yandex_gpt
 
 Base.metadata.create_all(bind=engine)
@@ -225,6 +226,37 @@ def get_user_participant(db: Session, session: ContractSession, user: User) -> C
     return participant
 
 
+def get_final_version(db: Session, session: ContractSession) -> ContractVersion | None:
+    return (
+        db.query(ContractVersion)
+        .filter(ContractVersion.session_id == session.id, ContractVersion.is_final.is_(True))
+        .order_by(ContractVersion.version_number.desc())
+        .first()
+    )
+
+
+def count_completed_today(db: Session, user: User) -> int:
+    today = now_utc().date()
+    day_start = datetime.combine(today, time.min, tzinfo=timezone.utc)
+    day_end = datetime.combine(today, time.max, tzinfo=timezone.utc)
+    return (
+        db.query(ContractSession)
+        .filter(
+            ContractSession.owner_user_id == user.id,
+            ContractSession.is_completed.is_(True),
+            ContractSession.finalized_at >= day_start,
+            ContractSession.finalized_at <= day_end,
+        )
+        .count()
+    )
+
+
+def format_history(messages: list[Message]) -> str:
+    return "\n\n".join(
+        f"{message.created_at.isoformat()} / {message.role.value}:\n{message.content}" for message in messages
+    )
+
+
 @app.post("/sessions/{session_id}/invite")
 def create_invite(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = db.get(ContractSession, session_id)
@@ -271,15 +303,18 @@ async def send_message(
 ):
     session = get_accessible_session(db, session_id, user)
 
-    if session.status == SessionStatus.finalized and not payload.content.strip().upper().startswith("СПОР"):
-        return {
-            "content": (
-                "⚠️ В этом чате договор уже финализирован.\n"
-                "Изменение условий после финализации невозможно.\n\n"
-                "Если у вас возник спор по условиям договора, напишите \"СПОР\" и опишите ситуацию.\n"
-                "Для создания нового договора нажмите кнопку \"+ Новый договор\"."
-            )
-        }
+    is_dispute = payload.content.strip().upper().startswith("СПОР")
+    if session.status == SessionStatus.finalized and not is_dispute:
+        answer = (
+            "⚠️ В этом чате договор уже финализирован.\n"
+            "Изменение условий после финализации невозможно.\n\n"
+            "Если у вас возник спор по условиям договора, напишите \"СПОР\" и опишите ситуацию.\n"
+            "Для создания нового договора нажмите кнопку \"+ Новый договор\"."
+        )
+        db.add(Message(session_id=session.id, role=MessageRole.user, content=payload.content))
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {"content": answer}
 
     warning = ""
     if contains_passport_like_data(payload.content):
@@ -292,14 +327,24 @@ async def send_message(
     db.commit()
 
     try:
-        answer = await ask_yandex_gpt(
-            [
-                {
-                    "role": "system",
-                    "text": "Ты AI-Арбитр. Помогаешь составлять договоры по праву РФ и разрешать споры по ним.",
-                },
+        if session.status == SessionStatus.finalized and is_dispute:
+            final_version = get_final_version(db, session)
+            if final_version is None:
+                raise HTTPException(status_code=400, detail="Финальная версия договора не найдена")
+            messages = (
+                db.query(Message)
+                .filter(Message.session_id == session.id)
+                .order_by(Message.created_at.asc())
+                .all()
+            )
+            prompt = build_dispute_prompt(final_version.content, format_history(messages), payload.content)
+        else:
+            prompt = [
+                {"role": "system", "text": CONTRACT_SYSTEM_PROMPT},
                 {"role": "user", "text": payload.content},
             ]
+        answer = await ask_yandex_gpt(
+            prompt
         )
     except YandexGPTError:
         answer = "Сервис временно недоступен. Попробуйте через минуту."
@@ -356,6 +401,14 @@ def approve_version(session_id: str, user: User = Depends(get_current_user), db:
         for item in participants
     )
     if both_approved:
+        owner = db.get(User, session.owner_user_id)
+        if owner is None:
+            raise HTTPException(status_code=400, detail="Владелец договора не найден")
+        if count_completed_today(db, owner) >= 10:
+            raise HTTPException(
+                status_code=429,
+                detail="Достигнут лимит бета-версии: 10 завершенных договоров в день. Доступ будет восстановлен завтра",
+            )
         session.status = SessionStatus.finalized
         session.finalized_at = now_utc()
         session.download_token = session.download_token or uuid.uuid4()

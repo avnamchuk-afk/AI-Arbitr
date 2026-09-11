@@ -22,6 +22,7 @@ function App() {
   const [inviteLink, setInviteLink] = useState("");
   const [contractText, setContractText] = useState("");
   const [changesText, setChangesText] = useState("");
+  const [appNotice, setAppNotice] = useState("");
 
   const pendingInvite = getInviteTokenFromPath();
 
@@ -167,7 +168,14 @@ function App() {
       method: "POST",
       credentials: "include",
     });
-    if (response.ok) loadSession(currentSession.id);
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      setAppNotice(error?.detail || "Не удалось согласовать договор");
+      return;
+    }
+    const data = await response.json();
+    setAppNotice(data.finalized ? "Договор финализирован. PDF доступен для скачивания." : "Согласие зафиксировано.");
+    loadSession(currentSession.id);
   }
 
   async function requestChanges() {
@@ -269,6 +277,7 @@ function App() {
           </div>
         ) : (
           <>
+            {appNotice && <div className="app-notice">{appNotice}</div>}
             <div className="work-area">
               <div className="dialogue">
                 <div className="messages">
