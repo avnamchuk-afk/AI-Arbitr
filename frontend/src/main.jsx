@@ -294,6 +294,10 @@ function App() {
                   <strong>Версия договора</strong>
                   <span>{currentSession.status}</span>
                 </div>
+                <p className="panel-help">
+                  После генерации или правок перенесите актуальный текст договора в это поле и нажмите
+                  “Сохранить версию”. Стороны соглашаются именно с сохраненной версией.
+                </p>
                 <textarea
                   value={contractText}
                   onChange={(event) => setContractText(event.target.value)}
@@ -316,6 +320,9 @@ function App() {
                   onChange={(event) => setChangesText(event.target.value)}
                   placeholder="Предложить правки"
                 />
+                <small className="panel-hint">
+                  Правки попадут в историю. Новую редакцию договора нужно сохранить вручную после обработки.
+                </small>
                 <button className="secondary" onClick={requestChanges}>
                   Отправить правки
                 </button>

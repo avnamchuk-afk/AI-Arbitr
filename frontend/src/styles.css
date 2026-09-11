@@ -229,6 +229,14 @@ button {
   font-size: 13px;
 }
 
+.panel-help,
+.panel-hint {
+  margin: 0;
+  color: #5a6572;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .contract-panel textarea {
   width: 100%;
   min-height: 220px;
