@@ -47,6 +47,10 @@ app.add_middleware(
 
 class LoginRequest(BaseModel):
     email: EmailStr
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
     personal_data_accepted: bool
 
 
@@ -179,21 +183,11 @@ def get_current_user(
     return user
 
 
-@app.post("/auth/magic-link")
-def request_magic_link(payload: LoginRequest, db: Session = Depends(get_db)):
-    if not payload.personal_data_accepted:
-        raise HTTPException(status_code=400, detail="Нужно согласие на обработку персональных данных")
-
-    user = db.query(User).filter(User.email == payload.email).one_or_none()
-    if user is None:
-        user = User(email=payload.email)
-        db.add(user)
-        db.flush()
-
+def issue_magic_link(email: str, db: Session) -> dict[str, str]:
     raw_token = generate_raw_token()
     db.add(
         AuthToken(
-            email=payload.email,
+            email=email,
             token_hash=hash_token(raw_token),
             expires_at=token_expires_at(),
         )
@@ -201,12 +195,48 @@ def request_magic_link(payload: LoginRequest, db: Session = Depends(get_db)):
     db.commit()
 
     verify_link = f"{settings.api_base_url}/auth/verify?token={raw_token}"
-    send_magic_link(payload.email, verify_link)
+    send_magic_link(email, verify_link)
 
     response = {"message": "Ссылка для входа отправлена на вашу почту"}
     if settings.app_env == "local" and not smtp_is_configured():
         response["dev_link"] = verify_link
     return response
+
+
+@app.post("/auth/register")
+def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+    if not payload.personal_data_accepted:
+        raise HTTPException(status_code=400, detail="Нужно согласие на обработку персональных данных")
+
+    existing_user = db.query(User).filter(User.email == payload.email).one_or_none()
+    if existing_user is not None:
+        raise HTTPException(status_code=409, detail="Аккаунт с таким email уже есть. Войдите по email.")
+
+    db.add(User(email=payload.email))
+    db.flush()
+    return issue_magic_link(payload.email, db)
+
+
+@app.post("/auth/login")
+def request_login_link(payload: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == payload.email).one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="Аккаунт не найден. Зарегистрируйтесь по email.")
+
+    return issue_magic_link(payload.email, db)
+
+
+@app.post("/auth/magic-link")
+def request_magic_link(payload: RegisterRequest, db: Session = Depends(get_db)):
+    if not payload.personal_data_accepted:
+        raise HTTPException(status_code=400, detail="Нужно согласие на обработку персональных данных")
+
+    user = db.query(User).filter(User.email == payload.email).one_or_none()
+    if user is None:
+        db.add(User(email=payload.email))
+        db.flush()
+
+    return issue_magic_link(payload.email, db)
 
 
 @app.get("/auth/verify")

@@ -37,6 +37,7 @@ function buildReasoningNote(steps) {
 
 function App() {
   const [email, setEmail] = useState("");
+  const [authMode, setAuthMode] = useState("register");
   const [userId, setUserId] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -130,14 +131,22 @@ function App() {
 
   async function login(event) {
     event.preventDefault();
-    const response = await fetch(`${API_URL}/auth/magic-link`, {
+    setLoginNotice("");
+    setDevLink("");
+    const endpoint = authMode === "register" ? "/auth/register" : "/auth/login";
+    const payload =
+      authMode === "register" ? { email, personal_data_accepted: accepted } : { email };
+    const response = await fetch(`${API_URL}${endpoint}`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, personal_data_accepted: accepted }),
+      body: JSON.stringify(payload),
     });
-    if (!response.ok) return;
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setLoginNotice(data.detail || "Не удалось отправить ссылку. Проверьте email и попробуйте еще раз.");
+      return;
+    }
     setLoginNotice(data.message);
     setDevLink(data.dev_link || "");
   }
@@ -286,12 +295,38 @@ function App() {
       <main className="login-page">
         <form className="login-form" onSubmit={login}>
           <h1>AI-Арбитр</h1>
+          <div className="auth-switch" role="tablist" aria-label="Регистрация или вход">
+            <button
+              type="button"
+              className={authMode === "register" ? "active" : ""}
+              onClick={() => {
+                setAuthMode("register");
+                setLoginNotice("");
+                setDevLink("");
+              }}
+            >
+              Регистрация
+            </button>
+            <button
+              type="button"
+              className={authMode === "login" ? "active" : ""}
+              onClick={() => {
+                setAuthMode("login");
+                setLoginNotice("");
+                setDevLink("");
+              }}
+            >
+              Вход
+            </button>
+          </div>
           <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="email@example.com" />
-          <label className="checkbox-row">
-            <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
-            <span>Я согласен на обработку персональных данных</span>
-          </label>
-          <button>Отправить ссылку для входа</button>
+          {authMode === "register" && (
+            <label className="checkbox-row">
+              <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
+              <span>Я согласен на обработку персональных данных</span>
+            </label>
+          )}
+          <button>{authMode === "register" ? "Зарегистрироваться" : "Отправить ссылку для входа"}</button>
           {loginNotice && <p className="notice">{loginNotice}</p>}
           {devLink && (
             <a className="dev-link" href={devLink}>
