@@ -66,8 +66,6 @@ function App() {
   const [devLink, setDevLink] = useState("");
   const [sessionDetail, setSessionDetail] = useState(null);
   const [inviteLink, setInviteLink] = useState("");
-  const [contractText, setContractText] = useState("");
-  const [changesText, setChangesText] = useState("");
   const [appNotice, setAppNotice] = useState("");
   const [partyName, setPartyName] = useState("");
   const [partyEmail, setPartyEmail] = useState("");
@@ -196,7 +194,6 @@ function App() {
     setSessionDetail(detail);
     setCurrentSession(detail.session);
     setMessages(detail.messages || []);
-    setContractText(detail.latest_version?.content || "");
   }
 
   async function loadSessions() {
@@ -240,8 +237,6 @@ function App() {
     setCurrentSession(session);
     setSessionDetail(null);
     setInviteLink("");
-    setContractText("");
-    setChangesText("");
     setSessions([session, ...sessions]);
     setMessages([]);
     setSidebarOpen(false);
@@ -270,9 +265,7 @@ function App() {
       setCurrentSession(null);
       setSessionDetail(null);
       setMessages([]);
-      setContractText("");
       setInviteLink("");
-      setChangesText("");
       setAppNotice("");
     }
   }
@@ -281,15 +274,18 @@ function App() {
     if (!draft.trim() || !currentSession) return;
     const rawContent = draft.trim();
     const isContractUpdate = chatMode === "add";
+    const isQuestion = chatMode === "question";
+    const isInitialContract = !hasContractVersion && !isContractUpdate && !isQuestion;
     const content = isContractUpdate ? `ДОПОЛНИТЬ ДОГОВОР: ${rawContent}` : rawContent;
     const thinkingSteps = isContractUpdate
       ? [
-          "Понял новое условие.",
-          "Проверяю, куда его лучше встроить в договор.",
-          "Обновляю редакцию так, чтобы условие не конфликтовало с остальным текстом.",
-          "Сохраняю новую версию договора.",
+          "Нужно добавить условие в договор.",
+          "Проверяю, не противоречит ли оно ГК РФ и логике договора.",
+          "ГК РФ не противоречит: условие можно включить, если оно сформулировано ясно и справедливо.",
+          "Ищу правильный раздел договора и формулирую норму.",
+          "Готово. Встраиваю условие в новую редакцию.",
         ]
-      : chatMode === "question"
+      : isQuestion
         ? [
             "Понял вопрос по договору.",
             "Сверяю вопрос с текущей редакцией договора.",
@@ -323,8 +319,12 @@ function App() {
       await sleep(450);
       setThinking(false);
       setMessages((items) => [...items, { role: "system", content: data.reasoning || buildReasoningNote(thinkingSteps) }]);
-      await typeAssistantMessage(data.content);
-      if (chatMode === "question") {
+      if (isInitialContract) {
+        await typeAssistantMessage(data.content);
+      } else {
+        setMessages((items) => [...items, { role: "assistant", content: data.content }]);
+      }
+      if (isQuestion) {
         setQuestionResolved(true);
       }
       setChatMode("idle");
@@ -348,17 +348,6 @@ function App() {
       });
       await sleep(TYPEWRITER_DELAY_MS);
     }
-  }
-
-  async function saveVersion() {
-    if (!contractText.trim() || !currentSession) return;
-    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/versions`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: contractText }),
-    });
-    if (response.ok) loadSession(currentSession.id);
   }
 
   async function createInvite() {
@@ -389,45 +378,37 @@ function App() {
   function startQuestion() {
     setChatMode("question");
     setDraft("");
+    setQuestionResolved(false);
+    setMessages((items) => [
+      ...items,
+      {
+        role: "assistant",
+        content: "Понял. Напишите вопрос по договору, а я отвечу простым языком и сверю ответ с текущей редакцией.",
+      },
+    ]);
   }
 
   function startAddition() {
     setChatMode("add");
     setDraft("");
+    setQuestionResolved(false);
+    setMessages((items) => [
+      ...items,
+      {
+        role: "system",
+        content:
+          "Что делает Арби:\n• Нужно добавить условие в договор.\n• Сначала проверю, не противоречит ли оно ГК РФ.\n• Затем найду раздел, куда его правильно включить.\n• После этого сформулирую одну норму и подготовлю новую редакцию.",
+      },
+      {
+        role: "assistant",
+        content: "Опишите одно условие, которое нужно добавить. Например: запретить проживание с животными без письменного согласия наймодателя.",
+      },
+    ]);
   }
 
   function startAgreement() {
     setChatMode("agree");
     setQuestionResolved(false);
-  }
-
-  async function approve() {
-    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/approve`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => null);
-      setAppNotice(error?.detail || "Не удалось согласовать договор");
-      return;
-    }
-    const data = await response.json();
-    setAppNotice(data.finalized ? "Договор финализирован. PDF доступен для скачивания." : "Согласие зафиксировано.");
-    loadSession(currentSession.id);
-  }
-
-  async function requestChanges() {
-    if (!changesText.trim()) return;
-    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/request-changes`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: changesText }),
-    });
-    if (response.ok) {
-      setChangesText("");
-      loadSession(currentSession.id);
-    }
   }
 
   function downloadPdf() {
@@ -441,9 +422,9 @@ function App() {
   const isEmptySession = currentSession && messages.length === 0 && !thinking && !appNotice;
   const composerPlaceholder =
     chatMode === "question"
-      ? "Напишите вопрос по договору"
+      ? "Например: что означает обеспечительный платеж и когда его вернут?"
       : chatMode === "add"
-        ? "Опишите новое условие, которое нужно добавить"
+        ? "Например: добавить запрет проживания с животными без согласия"
         : "Например: составь договор найма квартиры";
 
   if (!authReady) {
@@ -643,7 +624,6 @@ function App() {
                 onClick={() => {
                   setCurrentSession(session);
                   setInviteLink("");
-                  setChangesText("");
                   setDeleteCandidateId("");
                   setSidebarOpen(false);
                 }}
@@ -753,17 +733,6 @@ function App() {
                             <Check size={16} /> Согласиться с версией
                           </button>
                         </div>
-                        <details className="contract-details">
-                          <summary>Посмотреть текущую версию договора</summary>
-                          <textarea
-                            value={contractText}
-                            onChange={(event) => setContractText(event.target.value)}
-                            placeholder="Текущая версия договора"
-                          />
-                          <div className="panel-actions">
-                            <button onClick={saveVersion}>Сохранить ручные правки</button>
-                          </div>
-                        </details>
                       </div>
                     )}
                   </section>

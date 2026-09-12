@@ -245,8 +245,7 @@ button:hover {
 .login-form input:focus,
 .composer textarea:focus,
 .party-form input:focus,
-.contract-panel textarea:focus,
-.contract-details textarea:focus {
+.contract-panel textarea:focus {
   border-color: rgb(64 90 138 / 55%);
   box-shadow: 0 0 0 3px rgb(64 90 138 / 12%);
 }
@@ -761,26 +760,6 @@ button:hover {
   padding: 11px 14px;
   color: #ffffff;
   background: rgb(64 90 138 / 88%);
-}
-
-.contract-details {
-  display: grid;
-  gap: 10px;
-}
-
-.contract-details summary {
-  cursor: pointer;
-  color: var(--accent);
-}
-
-.contract-details textarea {
-  width: 100%;
-  min-height: 260px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px;
-  resize: vertical;
-  background: rgb(255 255 255 / 62%);
 }
 
 .composer {
