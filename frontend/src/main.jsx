@@ -46,6 +46,16 @@ function formatSessionTimestamp(session) {
   });
 }
 
+function formatFinalizedDate(session) {
+  const timestamp = session?.finalized_at || session?.updated_at || session?.created_at;
+  if (!timestamp) return "не указана";
+  return new Date(timestamp).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
 function KeyTermsCard({ terms }) {
   const visibleTerms = (terms || []).filter((term) => term.value && term.value !== "не указано");
   if (!visibleTerms.length) return null;
@@ -297,9 +307,14 @@ function App() {
     if (!draft.trim() || !currentSession) return;
     const rawContent = draft.trim();
     const isContractUpdate = chatMode === "add";
+    const isDispute = chatMode === "dispute";
     const isQuestion = chatMode === "question" || (hasContractVersion && chatMode === "idle");
     const isInitialContract = !hasContractVersion && !isContractUpdate && !isQuestion;
-    const content = isContractUpdate ? `ДОПОЛНИТЬ ДОГОВОР: ${rawContent}` : rawContent;
+    const content = isContractUpdate
+      ? `ДОПОЛНИТЬ ДОГОВОР: ${rawContent}`
+      : isDispute
+        ? `СПОР: ${rawContent}`
+        : rawContent;
     const thinkingSteps = isContractUpdate
       ? [
           "Нужно добавить условие в договор.",
@@ -314,7 +329,13 @@ function App() {
             "Сверяю вопрос с текущей редакцией договора.",
             "Формулирую ответ простым языком.",
           ]
-        : getThinkingSteps(rawContent);
+        : isDispute
+          ? [
+              "Понял, открываем спор по финализированному договору.",
+              "Проверяю условия договора и историю согласования.",
+              "Формирую позицию AI-Арбитра.",
+            ]
+          : getThinkingSteps(rawContent);
     setDraft("");
     setQuestionResolved(false);
     setMessages((items) => [...items, { role: "user", content: rawContent }]);
@@ -417,6 +438,12 @@ function App() {
     setQuestionResolved(false);
   }
 
+  function startDispute() {
+    setChatMode("dispute");
+    setDraft("");
+    setQuestionResolved(false);
+  }
+
   function downloadPdf() {
     const token = sessionDetail?.session?.download_token || currentSession?.download_token;
     if (!token) return;
@@ -431,7 +458,9 @@ function App() {
       ? "Например: что означает обеспечительный платеж и когда его вернут?"
       : chatMode === "add"
         ? "Например: добавить запрет проживания с животными без согласия"
-        : "Например: составь договор найма квартиры";
+        : chatMode === "dispute"
+          ? "Опишите, что произошло: кто, когда, какое условие нарушил"
+          : "Например: составь договор найма квартиры";
 
   if (!authReady) {
     return (
@@ -759,13 +788,29 @@ function App() {
                   </section>
                 )}
                 {isFinalized && (
-                  <section className="next-step">
-                    <strong>Договор финализирован.</strong>
-                    <p>Теперь в этом чате можно разобрать спор. Напишите “СПОР” и опишите ситуацию.</p>
-                    {(sessionDetail?.session?.download_token || currentSession.download_token) && (
-                      <button className="download-button" onClick={downloadPdf}>
-                        <Download size={16} /> Скачать PDF
+                  <section className="signed-contract-card">
+                    <div>
+                      <span>Договор подписан</span>
+                      <strong>
+                        {(sessionDetail?.key_terms || []).find((term) => term.label === "Вид договора")?.value ||
+                          "Договор подписан сторонами"}
+                      </strong>
+                      <p>Подписан сторонами путем согласования: {formatFinalizedDate(sessionDetail?.session || currentSession)}</p>
+                    </div>
+                    <div className="signed-actions">
+                      {(sessionDetail?.session?.download_token || currentSession.download_token) && (
+                        <button className="download-button" onClick={downloadPdf}>
+                          <Download size={16} /> Открыть PDF
+                        </button>
+                      )}
+                      <button className="dispute-button" onClick={startDispute}>
+                        Открыть спор
                       </button>
+                    </div>
+                    {chatMode === "dispute" && (
+                      <p className="panel-hint">
+                        Опишите ситуацию. Я проверю условия договора, историю согласования и подготовлю позицию AI-Арбитра.
+                      </p>
                     )}
                   </section>
                 )}
