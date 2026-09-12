@@ -4,7 +4,7 @@ import { Check, Copy, Download, LogOut, Menu, Plus, Send, Trash2 } from "lucide-
 import "./styles.css";
 
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
-const TYPEWRITER_DELAY_MS = 34;
+const TYPEWRITER_DELAY_MS = 17;
 const TYPEWRITER_CHUNK_SIZE = 2;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
