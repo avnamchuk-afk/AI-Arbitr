@@ -165,6 +165,35 @@ button {
   flex-direction: column;
 }
 
+.session-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.start-session {
+  justify-content: center;
+  padding-bottom: 12vh;
+}
+
+.start-session .chat-thread {
+  display: none;
+}
+
+.start-session .composer {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.start-session .composer textarea {
+  min-height: 72px;
+}
+
+.start-session .hint {
+  text-align: center;
+}
+
 .app-notice {
   margin-bottom: 12px;
   border: 1px solid #9fc6bd;
@@ -477,6 +506,19 @@ button {
 
   .chat-area {
     padding: 72px 14px 18px;
+  }
+
+  .start-session {
+    justify-content: center;
+    padding-bottom: 18vh;
+  }
+
+  .start-session .composer {
+    width: min(360px, 100%);
+  }
+
+  .start-session .composer textarea {
+    min-height: 88px;
   }
 
   .empty-state {

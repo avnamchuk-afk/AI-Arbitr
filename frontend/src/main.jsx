@@ -217,6 +217,7 @@ function App() {
 
   const hasContractVersion = Boolean(sessionDetail?.latest_version);
   const isFinalized = currentSession?.status === "finalized";
+  const isEmptySession = currentSession && messages.length === 0 && !thinking && !appNotice;
 
   if (!authed) {
     return (
@@ -297,7 +298,7 @@ function App() {
             <button onClick={createSession}>Создать первый договор</button>
           </div>
         ) : (
-          <>
+          <div className={isEmptySession ? "session-stage start-session" : "session-stage active-session"}>
             <div className="chat-thread">
               {appNotice && <div className="app-notice">{appNotice}</div>}
               <div className="messages">
@@ -378,14 +379,14 @@ function App() {
                     sendMessage();
                   }
                 }}
-                placeholder="Опишите, какой договор нужно составить"
+                placeholder="Например: составь договор найма квартиры"
               />
               <button onClick={sendMessage} aria-label="Отправить">
                 <Send size={20} />
               </button>
             </div>
             <small className="hint">Нажмите Enter для отправки</small>
-          </>
+          </div>
         )}
       </section>
     </main>
