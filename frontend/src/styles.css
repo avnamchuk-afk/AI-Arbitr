@@ -538,6 +538,40 @@ button:hover {
   gap: 8px;
 }
 
+.chat-actions {
+  width: min(760px, 92%);
+}
+
+.quick-flow {
+  display: grid;
+  gap: 12px;
+}
+
+.quick-flow p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.action-row button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgb(64 90 138 / 28%);
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: var(--accent-strong);
+  background: rgb(255 255 255 / 52%);
+}
+
 .message.thinking span {
   width: 8px;
   height: 8px;

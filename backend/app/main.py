@@ -232,17 +232,7 @@ DEMO_EXPLANATION = """Обеспечительный платеж — это с�
 • какие суммы можно удержать;
 • что естественный износ не считается ущербом."""
 
-CONTRACT_NEXT_STEP_TEXT = """
-
----
-
-Я подготовил проект договора и сохранил его как текущую версию.
-
-Можете задать мне любые вопросы по тексту: например, что означает отдельный пункт,
-какие риски есть у стороны, что лучше уточнить или изменить.
-
-Когда вопросов не останется, укажите ниже данные второй стороны и email — я подготовлю
-ссылку для согласования договора."""
+CONTRACT_UPDATE_PREFIX = "ДОПОЛНИТЬ ДОГОВОР:"
 
 
 def build_reasoning_note(content: str) -> str:
@@ -742,6 +732,41 @@ async def send_message(
                 .all()
             )
             prompt = build_dispute_prompt(final_version.content, format_history(messages), payload.content)
+        elif session.status != SessionStatus.finalized and get_latest_version(db, session) is not None:
+            latest_version = get_latest_version(db, session)
+            if payload.content.startswith(CONTRACT_UPDATE_PREFIX):
+                requested_change = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
+                prompt = [
+                    {"role": "system", "text": CONTRACT_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "text": (
+                            "Перед тобой текущая версия договора. Внеси в нее новое условие или уточнение "
+                            "по просьбе пользователя. Верни полный обновленный текст договора без пояснений.\n\n"
+                            f"Текущая версия договора:\n{latest_version.content}\n\n"
+                            f"Просьба пользователя:\n{requested_change}"
+                        ),
+                    },
+                ]
+            else:
+                should_save_contract_version = False
+                prompt = [
+                    {
+                        "role": "system",
+                        "text": (
+                            "Ты AI-Арбитр. Пользователь задает вопрос по уже подготовленному договору. "
+                            "Ответь простым языком, коротко и практически. Не генерируй договор заново. "
+                            "Если есть риск или развилка, объясни ее понятными словами."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "text": (
+                            f"Текущая версия договора:\n{latest_version.content}\n\n"
+                            f"Вопрос пользователя:\n{payload.content}"
+                        ),
+                    },
+                ]
         else:
             prompt = [
                 {"role": "system", "text": CONTRACT_SYSTEM_PROMPT},
@@ -765,8 +790,6 @@ async def send_message(
         )
 
     contract_text = answer
-    if should_save_contract_version:
-        answer = answer + CONTRACT_NEXT_STEP_TEXT
     answer = warning + answer
     db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
     if should_save_contract_version:

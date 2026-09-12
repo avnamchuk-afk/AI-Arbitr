@@ -72,6 +72,8 @@ function App() {
   const [partyName, setPartyName] = useState("");
   const [partyEmail, setPartyEmail] = useState("");
   const [deleteCandidateId, setDeleteCandidateId] = useState("");
+  const [chatMode, setChatMode] = useState("idle");
+  const [questionResolved, setQuestionResolved] = useState(false);
   const messagesEndRef = useRef(null);
 
   const pendingInvite = getInviteTokenFromPath();
@@ -233,10 +235,26 @@ function App() {
 
   async function sendMessage() {
     if (!draft.trim() || !currentSession) return;
-    const content = draft.trim();
-    const thinkingSteps = getThinkingSteps(content);
+    const rawContent = draft.trim();
+    const isContractUpdate = chatMode === "add";
+    const content = isContractUpdate ? `ДОПОЛНИТЬ ДОГОВОР: ${rawContent}` : rawContent;
+    const thinkingSteps = isContractUpdate
+      ? [
+          "Понял новое условие.",
+          "Проверяю, куда его лучше встроить в договор.",
+          "Обновляю редакцию так, чтобы условие не конфликтовало с остальным текстом.",
+          "Сохраняю новую версию договора.",
+        ]
+      : chatMode === "question"
+        ? [
+            "Понял вопрос по договору.",
+            "Сверяю вопрос с текущей редакцией договора.",
+            "Формулирую ответ простым языком.",
+          ]
+        : getThinkingSteps(rawContent);
     setDraft("");
-    setMessages((items) => [...items, { role: "user", content }]);
+    setQuestionResolved(false);
+    setMessages((items) => [...items, { role: "user", content: rawContent }]);
     setThinking(true);
     setThinkingStep(thinkingSteps[0]);
     let thinkingTimer;
@@ -262,9 +280,10 @@ function App() {
       setThinking(false);
       setMessages((items) => [...items, { role: "system", content: data.reasoning || buildReasoningNote(thinkingSteps) }]);
       await typeAssistantMessage(data.content);
-      if (data.contract_saved) {
-        setAppNotice("Проект договора сгенерирован и сохранен как текущая версия.");
+      if (chatMode === "question") {
+        setQuestionResolved(true);
       }
+      setChatMode("idle");
       loadSession(currentSession.id);
       loadSessions();
     } finally {
@@ -321,6 +340,21 @@ function App() {
     );
   }
 
+  function startQuestion() {
+    setChatMode("question");
+    setDraft("");
+  }
+
+  function startAddition() {
+    setChatMode("add");
+    setDraft("");
+  }
+
+  function startAgreement() {
+    setChatMode("agree");
+    setQuestionResolved(false);
+  }
+
   async function approve() {
     const response = await fetch(`${API_URL}/sessions/${currentSession.id}/approve`, {
       method: "POST",
@@ -359,6 +393,12 @@ function App() {
   const hasContractVersion = Boolean(sessionDetail?.latest_version);
   const isFinalized = currentSession?.status === "finalized";
   const isEmptySession = currentSession && messages.length === 0 && !thinking && !appNotice;
+  const composerPlaceholder =
+    chatMode === "question"
+      ? "Напишите вопрос по договору"
+      : chatMode === "add"
+        ? "Опишите новое условие, которое нужно добавить"
+        : "Например: составь договор найма квартиры";
 
   if (!authReady) {
     return (
@@ -554,46 +594,64 @@ function App() {
                   </article>
                 )}
                 {hasContractVersion && !isFinalized && (
-                  <section className="next-step">
-                    <div>
-                      <strong>Проект договора сохранён.</strong>
-                      <p>
-                        Задайте Арби вопросы по тексту договора. Когда всё понятно и вопросов не осталось,
-                        укажите данные второй стороны и email для отправки ссылки на согласование.
-                      </p>
-                    </div>
-                    <div className="party-form">
-                      <input
-                        value={partyName}
-                        onChange={(event) => setPartyName(event.target.value)}
-                        placeholder="Имя или название второй стороны"
-                      />
-                      <input
-                        value={partyEmail}
-                        onChange={(event) => setPartyEmail(event.target.value)}
-                        placeholder="email второй стороны"
-                      />
-                      <button onClick={createInvite}>Подготовить ссылку согласования</button>
-                    </div>
-                    {inviteLink && (
-                      <button className="copy-link" onClick={() => navigator.clipboard?.writeText(inviteLink)}>
-                        <Copy size={16} /> {inviteLink}
-                      </button>
-                    )}
-                    <details className="contract-details">
-                      <summary>Посмотреть текущую версию договора</summary>
-                      <textarea
-                        value={contractText}
-                        onChange={(event) => setContractText(event.target.value)}
-                        placeholder="Текущая версия договора"
-                      />
-                      <div className="panel-actions">
-                        <button onClick={saveVersion}>Сохранить правки</button>
-                        <button onClick={approve}>
-                          <Check size={16} /> Согласен с версией
-                        </button>
+                  <section className="message assistant chat-actions">
+                    {questionResolved ? (
+                      <div className="quick-flow">
+                        <strong>Все понятно?</strong>
+                        <div className="action-row">
+                          <button onClick={() => setQuestionResolved(false)}>Да</button>
+                          <button onClick={startQuestion}>Нет, задать еще вопрос</button>
+                        </div>
                       </div>
-                    </details>
+                    ) : chatMode === "agree" ? (
+                      <div className="quick-flow">
+                        <strong>Если все понятно и вопросов нет, сохраняю версию.</strong>
+                        <p>
+                          Введите email второй стороны договора. На него будет направлена ссылка-приглашение
+                          для присоединения к сессии согласования.
+                        </p>
+                        <div className="party-form">
+                          <input
+                            value={partyName}
+                            onChange={(event) => setPartyName(event.target.value)}
+                            placeholder="Имя или название второй стороны"
+                          />
+                          <input
+                            value={partyEmail}
+                            onChange={(event) => setPartyEmail(event.target.value)}
+                            placeholder="email второй стороны"
+                          />
+                          <button onClick={createInvite}>Отправить ссылку согласования</button>
+                        </div>
+                        {inviteLink && (
+                          <button className="copy-link" onClick={() => navigator.clipboard?.writeText(inviteLink)}>
+                            <Copy size={16} /> {inviteLink}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="quick-flow">
+                        <strong>Что дальше?</strong>
+                        <div className="action-row">
+                          <button onClick={startQuestion}>Задать вопрос по договору</button>
+                          <button onClick={startAddition}>Дополнить новым условием</button>
+                          <button onClick={startAgreement}>
+                            <Check size={16} /> Согласиться с версией
+                          </button>
+                        </div>
+                        <details className="contract-details">
+                          <summary>Посмотреть текущую версию договора</summary>
+                          <textarea
+                            value={contractText}
+                            onChange={(event) => setContractText(event.target.value)}
+                            placeholder="Текущая версия договора"
+                          />
+                          <div className="panel-actions">
+                            <button onClick={saveVersion}>Сохранить ручные правки</button>
+                          </div>
+                        </details>
+                      </div>
+                    )}
                   </section>
                 )}
                 {isFinalized && (
@@ -620,7 +678,7 @@ function App() {
                     sendMessage();
                   }
                 }}
-                placeholder="Например: составь договор найма квартиры"
+                placeholder={composerPlaceholder}
               />
               <button onClick={sendMessage} aria-label="Отправить">
                 <Send size={20} />
