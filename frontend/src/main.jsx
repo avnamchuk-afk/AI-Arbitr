@@ -50,6 +50,9 @@ function App() {
   const [email, setEmail] = useState("");
   const [authMode, setAuthMode] = useState("register");
   const [userId, setUserId] = useState("");
+  const [authReady, setAuthReady] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -83,9 +86,21 @@ function App() {
       .then((user) => {
         setEmail(user.email);
         setUserId(user.id);
+        setIsGuest(Boolean(user.is_guest));
         setAuthed(true);
       })
-      .catch(() => setAuthed(false));
+      .catch(() =>
+        fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" })
+          .then((res) => res.json())
+          .then((user) => {
+            setEmail(user.email || "");
+            setUserId(user.id);
+            setIsGuest(true);
+            setAuthed(true);
+          })
+          .catch(() => setAuthed(false))
+      )
+      .finally(() => setAuthReady(true));
   }, [pendingInvite]);
 
   useEffect(() => {
@@ -93,9 +108,9 @@ function App() {
   }, [draft]);
 
   useEffect(() => {
-    if (!authed || !email) return;
+    if (!authed) return;
     loadSessions();
-  }, [authed, email]);
+  }, [authed]);
 
   useEffect(() => {
     if (!authed) return;
@@ -284,6 +299,12 @@ function App() {
   }
 
   async function createInvite() {
+    if (isGuest) {
+      setAuthMode("register");
+      setAuthPromptOpen(true);
+      setLoginNotice("Укажите email, чтобы сохранить сессию и отправить ссылку второй стороне.");
+      return;
+    }
     const response = await fetch(`${API_URL}/sessions/${currentSession.id}/invite`, {
       method: "POST",
       credentials: "include",
@@ -338,6 +359,17 @@ function App() {
   const hasContractVersion = Boolean(sessionDetail?.latest_version);
   const isFinalized = currentSession?.status === "finalized";
   const isEmptySession = currentSession && messages.length === 0 && !thinking && !appNotice;
+
+  if (!authReady) {
+    return (
+      <main className="login-page">
+        <div className="login-form">
+          <h1>AI-Арбитр</h1>
+          <p className="notice">Загружаю рабочее пространство...</p>
+        </div>
+      </main>
+    );
+  }
 
   if (!authed) {
     return (
@@ -399,16 +431,48 @@ function App() {
       {sidebarOpen && (
         <button className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-label="Закрыть меню" />
       )}
+      {authPromptOpen && (
+        <div className="auth-modal-backdrop">
+          <form className="login-form auth-modal" onSubmit={login}>
+            <h1>Сохранить историю</h1>
+            <p className="auth-copy">
+              Укажите email, чтобы сохранить этот договор, получить ссылку для входа и отправить договор второй стороне.
+            </p>
+            <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="email@example.com" />
+            <label className="checkbox-row">
+              <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
+              <span>Я согласен на обработку персональных данных</span>
+            </label>
+            <button>Отправить ссылку для входа</button>
+            {loginNotice && <p className="notice">{loginNotice}</p>}
+            {devLink && (
+              <a className="dev-link" href={devLink}>
+                Dev-вход без SMTP
+              </a>
+            )}
+            <button className="modal-secondary" type="button" onClick={() => setAuthPromptOpen(false)}>
+              Продолжить без отправки
+            </button>
+          </form>
+        </div>
+      )}
       <aside className={sidebarOpen ? "sidebar open" : "sidebar"}>
         <div className="account">
-          <strong>{email}</strong>
+          <strong>{isGuest ? "Гостевой режим" : email}</strong>
           <button
             onClick={() => {
-              fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" }).finally(() => {
-                setAuthed(false);
-                setSessions([]);
-                setCurrentSession(null);
-              });
+              fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" })
+                .then(() => fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" }))
+                .then((res) => res.json())
+                .then((user) => {
+                  setEmail(user.email || "");
+                  setUserId(user.id);
+                  setIsGuest(true);
+                  setAuthed(true);
+                  setSessions([]);
+                  setCurrentSession(null);
+                  loadSessions();
+                });
             }}
           >
             <LogOut size={16} /> Выход

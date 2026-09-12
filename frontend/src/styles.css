@@ -71,6 +71,13 @@ button:hover {
   color: var(--ink);
 }
 
+.auth-copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
 .auth-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -138,6 +145,35 @@ button:hover {
   color: var(--accent);
   text-decoration: none;
   background: rgb(255 255 255 / 44%);
+}
+
+.auth-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(23 34 47 / 32%);
+  backdrop-filter: blur(6px);
+}
+
+.auth-modal {
+  width: min(420px, 100%);
+}
+
+.modal-secondary {
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: rgb(255 255 255 / 46%);
+  box-shadow: none;
+}
+
+.login-form > button.modal-secondary {
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: rgb(255 255 255 / 46%);
+  box-shadow: none;
 }
 
 .login-form > button,

@@ -71,6 +71,7 @@ class InviteRequest(BaseModel):
     email: EmailStr | None = None
 
 
+GUEST_EMAIL_SUFFIX = "@guest.ai-arbitr.local"
 DEMO_SESSION_TITLE = "пример"
 LEGACY_DEMO_SESSION_TITLE = "Пример: договор на лендинг"
 DEMO_USER_PROMPT = "Составь договор найма"
@@ -319,6 +320,31 @@ def get_current_user(
     return user
 
 
+def get_optional_current_user(
+    db: Session = Depends(get_db),
+    session_cookie: str | None = Cookie(default=None, alias=settings.session_cookie_name),
+) -> User | None:
+    user_id = read_session_cookie(session_cookie)
+    if user_id is None:
+        return None
+    return db.get(User, user_id)
+
+
+def is_guest_user(user: User) -> bool:
+    return user.email.endswith(GUEST_EMAIL_SUFFIX)
+
+
+@app.post("/auth/guest")
+def create_guest(response: Response, db: Session = Depends(get_db)):
+    user = User(email=f"guest-{uuid.uuid4().hex}{GUEST_EMAIL_SUFFIX}")
+    db.add(user)
+    db.flush()
+    ensure_demo_session(db, user)
+    db.commit()
+    set_auth_cookie(response, user)
+    return {"id": user.id, "email": "", "is_guest": True}
+
+
 def issue_magic_link(email: str, db: Session) -> dict[str, str]:
     raw_token = generate_raw_token()
     db.add(
@@ -340,16 +366,24 @@ def issue_magic_link(email: str, db: Session) -> dict[str, str]:
 
 
 @app.post("/auth/register")
-def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+def register(
+    payload: RegisterRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+):
     if not payload.personal_data_accepted:
         raise HTTPException(status_code=400, detail="Нужно согласие на обработку персональных данных")
 
     existing_user = db.query(User).filter(User.email == payload.email).one_or_none()
-    if existing_user is not None:
+    if existing_user is not None and (current_user is None or existing_user.id != current_user.id):
         raise HTTPException(status_code=409, detail="Аккаунт с таким email уже есть. Войдите по email.")
 
-    db.add(User(email=payload.email))
-    db.flush()
+    if current_user is not None and is_guest_user(current_user):
+        current_user.email = payload.email
+        db.flush()
+    elif existing_user is None:
+        db.add(User(email=payload.email))
+        db.flush()
     return issue_magic_link(payload.email, db)
 
 
@@ -400,7 +434,7 @@ def verify_magic_link(token: str, db: Session = Depends(get_db)):
 
 @app.get("/auth/me")
 def auth_me(user: User = Depends(get_current_user)):
-    return {"id": user.id, "email": user.email}
+    return {"id": user.id, "email": "" if is_guest_user(user) else user.email, "is_guest": is_guest_user(user)}
 
 
 @app.post("/auth/logout")
@@ -612,6 +646,8 @@ def create_invite(
         raise HTTPException(status_code=404, detail="Сессия не найдена")
     if session.owner_user_id != user.id:
         raise HTTPException(status_code=403, detail="Приглашение может создать только Сторона 1")
+    if is_guest_user(user):
+        raise HTTPException(status_code=403, detail="Зарегистрируйтесь по email, чтобы отправить ссылку согласования")
     if session.invite_token is None:
         session.invite_token = uuid.uuid4()
         db.commit()
