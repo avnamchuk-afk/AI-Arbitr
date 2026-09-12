@@ -349,12 +349,17 @@ button {
 }
 
 .message.system {
-  align-self: center;
+  align-self: flex-start;
   max-width: min(720px, 92%);
   color: #5a6572;
   background: transparent;
   border: 1px dashed #cfd7e2;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.message.system em {
+  font-style: italic;
 }
 
 .message.thinking {

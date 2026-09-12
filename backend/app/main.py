@@ -127,6 +127,29 @@ CONTRACT_NEXT_STEP_TEXT = """
 ссылку для согласования договора."""
 
 
+def build_reasoning_note(content: str) -> str:
+    normalized = content.lower()
+    if "найм" in normalized or "квартир" in normalized or "жил" in normalized:
+        steps = [
+            "Понятно, делаем договор найма жилого помещения.",
+            "Проверяю применимые нормы ГК РФ о найме жилого помещения.",
+            "Выделяю существенные условия: жилое помещение, стороны, срок найма, размер и порядок оплаты.",
+            "Добавляю обычные условия: порядок передачи квартиры, коммунальные платежи, ремонт, доступ в помещение, ответственность.",
+            "Учитываю спорные места: депозит, просрочка оплаты, повреждение имущества, досрочное расторжение.",
+            "Генерирую первую версию договора.",
+        ]
+    else:
+        steps = [
+            "Понятно, готовлю проект договора по вашему запросу.",
+            "Проверяю применимые нормы ГК РФ и обязательные условия договора.",
+            "Выделяю существенные условия, без которых договор может работать плохо.",
+            "Добавляю обычные условия: порядок оплаты, сроки, приемка, ответственность, изменение и расторжение.",
+            "Учитываю типовые спорные места и формулирую условия понятным языком.",
+            "Генерирую первую версию договора.",
+        ]
+    return "Что делает Арби:\n" + "\n".join(f"• {step}" for step in steps)
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -460,6 +483,9 @@ async def send_message(
         )
 
     db.add(Message(session_id=session.id, role=MessageRole.user, content=payload.content))
+    reasoning_note = "" if session.status == SessionStatus.finalized else build_reasoning_note(payload.content)
+    if reasoning_note:
+        db.add(Message(session_id=session.id, role=MessageRole.system, content=reasoning_note))
     db.commit()
 
     try:
@@ -505,7 +531,7 @@ async def send_message(
     if should_save_contract_version:
         save_contract_version(db, session, contract_text)
     db.commit()
-    return {"content": answer, "contract_saved": should_save_contract_version}
+    return {"content": answer, "contract_saved": should_save_contract_version, "reasoning": reasoning_note}
 
 
 @app.post("/sessions/{session_id}/versions")

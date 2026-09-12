@@ -31,6 +31,10 @@ function getThinkingSteps(content) {
   ];
 }
 
+function buildReasoningNote(steps) {
+  return `Что делает Арби:\n${steps.map((step) => `• ${step}`).join("\n")}`;
+}
+
 function App() {
   const [email, setEmail] = useState("");
   const [userId, setUserId] = useState("");
@@ -184,6 +188,7 @@ function App() {
       setThinkingStep(thinkingSteps[thinkingSteps.length - 1]);
       await sleep(450);
       setThinking(false);
+      setMessages((items) => [...items, { role: "system", content: data.reasoning || buildReasoningNote(thinkingSteps) }]);
       await typeAssistantMessage(data.content);
       if (data.contract_saved) {
         setAppNotice("Проект договора сгенерирован и сохранен как текущая версия.");
@@ -361,7 +366,7 @@ function App() {
               <div className="messages">
                 {messages.map((message, index) => (
                   <article key={index} className={`message ${message.role}`}>
-                    {message.content}
+                    {message.role === "system" ? <em>{message.content}</em> : message.content}
                   </article>
                 ))}
                 {thinking && (
