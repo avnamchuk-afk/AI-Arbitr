@@ -2,8 +2,8 @@
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #1c2430;
   background: #eef4f3;
-  --accent: #105f57;
-  --accent-strong: #0b4d47;
+  --accent: #405a8a;
+  --accent-strong: #2e4167;
   --ink: #17222f;
   --muted: #5e6976;
   --surface: rgb(255 255 255 / 68%);
@@ -111,8 +111,8 @@ button:hover {
 .party-form input:focus,
 .contract-panel textarea:focus,
 .contract-details textarea:focus {
-  border-color: rgb(16 95 87 / 55%);
-  box-shadow: 0 0 0 3px rgb(16 95 87 / 12%);
+  border-color: rgb(64 90 138 / 55%);
+  box-shadow: 0 0 0 3px rgb(64 90 138 / 12%);
 }
 
 .checkbox-row {
@@ -132,7 +132,7 @@ button:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgb(16 95 87 / 36%);
+  border: 1px solid rgb(64 90 138 / 36%);
   border-radius: 8px;
   padding: 10px 12px;
   color: var(--accent);
@@ -147,8 +147,8 @@ button:hover {
   border-radius: 8px;
   padding: 12px 14px;
   color: #fff;
-  background: rgb(16 95 87 / 88%);
-  box-shadow: 0 10px 28px rgb(16 95 87 / 18%);
+  background: rgb(64 90 138 / 88%);
+  box-shadow: 0 10px 28px rgb(64 90 138 / 18%);
   backdrop-filter: var(--blur);
 }
 
@@ -193,7 +193,7 @@ button:hover {
 .panel-actions button:hover,
 .copy-link:hover,
 .download-button:hover {
-  border-color: rgb(16 95 87 / 32%);
+  border-color: rgb(64 90 138 / 32%);
   background: rgb(255 255 255 / 72%);
 }
 
@@ -320,11 +320,11 @@ button:hover {
 
 .app-notice {
   margin-bottom: 12px;
-  border: 1px solid rgb(16 95 87 / 26%);
+  border: 1px solid rgb(64 90 138 / 26%);
   border-radius: 8px;
   padding: 10px 12px;
   color: var(--accent-strong);
-  background: rgb(232 245 242 / 62%);
+  background: rgb(236 240 248 / 62%);
   backdrop-filter: var(--blur);
 }
 
@@ -434,7 +434,7 @@ button:hover {
 }
 
 .download-button {
-  border-color: rgb(16 95 87 / 36%);
+  border-color: rgb(64 90 138 / 36%);
   color: var(--accent);
 }
 
@@ -469,8 +469,8 @@ button:hover {
 
 .message.user {
   align-self: flex-end;
-  background: rgb(206 235 229 / 72%);
-  border: 1px solid rgb(16 95 87 / 18%);
+  background: rgb(220 229 246 / 72%);
+  border: 1px solid rgb(64 90 138 / 18%);
   backdrop-filter: var(--blur);
 }
 
@@ -529,7 +529,7 @@ button:hover {
   gap: 12px;
   padding: 16px;
   background: var(--surface);
-  border: 1px solid rgb(16 95 87 / 24%);
+  border: 1px solid rgb(64 90 138 / 24%);
   border-radius: 8px;
   box-shadow: var(--shadow);
   backdrop-filter: var(--blur);
@@ -561,7 +561,7 @@ button:hover {
   border-radius: 8px;
   padding: 11px 14px;
   color: #ffffff;
-  background: rgb(16 95 87 / 88%);
+  background: rgb(64 90 138 / 88%);
 }
 
 .contract-details {
@@ -609,9 +609,9 @@ button:hover {
   border: 0;
   border-radius: 8px;
   color: #fff;
-  background: rgb(16 95 87 / 88%);
+  background: rgb(64 90 138 / 88%);
   flex: 0 0 48px;
-  box-shadow: 0 10px 28px rgb(16 95 87 / 18%);
+  box-shadow: 0 10px 28px rgb(64 90 138 / 18%);
 }
 
 .hint {
