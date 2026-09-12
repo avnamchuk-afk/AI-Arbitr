@@ -181,6 +181,62 @@ button:hover {
   backdrop-filter: var(--blur);
 }
 
+.key-terms-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgb(64 90 138 / 22%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 58%);
+  box-shadow: 0 12px 34px rgb(23 34 47 / 7%);
+  backdrop-filter: var(--blur);
+}
+
+.key-terms-card > strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.key-terms-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.key-term {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.key-check {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #4f8b74;
+  box-shadow: 0 6px 16px rgb(79 139 116 / 20%);
+}
+
+.key-term small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.key-term p {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .login-form {
   width: min(420px, 100%);
   display: grid;
@@ -900,6 +956,10 @@ button:hover {
   }
 
   .party-form {
+    grid-template-columns: 1fr;
+  }
+
+  .key-terms-list {
     grid-template-columns: 1fr;
   }
 }

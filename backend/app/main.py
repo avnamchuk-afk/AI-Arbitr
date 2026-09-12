@@ -242,6 +242,7 @@ DEMO_EXPLANATION = """Обеспечительный платеж — это с�
 
 CONTRACT_UPDATE_PREFIX = "ДОПОЛНИТЬ ДОГОВОР:"
 PLACEHOLDER_RE = re.compile(r"\[([^\[\]]+)\]")
+MONEY_RE = re.compile(r"(\d[\d\s]*(?:[.,]\d+)?\s*(?:руб\.?|рублей))", re.IGNORECASE)
 
 
 def build_reasoning_note(content: str) -> str:
@@ -344,6 +345,59 @@ def fill_contract_placeholders(contract_text: str, values: dict[str, str]) -> st
         return values.get(placeholder.lower(), match.group(0))
 
     return PLACEHOLDER_RE.sub(replace, contract_text)
+
+
+def normalize_contract_line(line: str) -> str:
+    return line.strip().strip("#* ").replace("**", "").strip()
+
+
+def split_contract_sentences(contract_text: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", contract_text)
+    return [item.strip() for item in re.split(r"(?<=[.!?])\s+", normalized) if item.strip()]
+
+
+def find_sentence(contract_text: str, keywords: tuple[str, ...]) -> str:
+    for sentence in split_contract_sentences(contract_text):
+        lowered = sentence.lower()
+        if all(keyword in lowered for keyword in keywords):
+            return sentence
+    return "не указано"
+
+
+def build_key_terms(contract_text: str) -> list[dict[str, str]]:
+    lines = [normalize_contract_line(line) for line in contract_text.splitlines()]
+    lines = [line for line in lines if line]
+    title = next((line for line in lines if "договор" in line.lower()), "Договор")
+
+    object_value = find_sentence(contract_text, ("адрес",))
+    if object_value == "не указано":
+        object_value = find_sentence(contract_text, ("квартир",))
+
+    term_value = find_sentence(contract_text, ("срок",))
+    payment_sentence = find_sentence(contract_text, ("плата",))
+    payment_match = MONEY_RE.search(payment_sentence)
+    payment_value = payment_match.group(1) if payment_match else payment_sentence
+
+    deposit_value = find_sentence(contract_text, ("обеспеч", "плат"))
+    utilities_value = find_sentence(contract_text, ("коммун",))
+    if utilities_value == "не указано":
+        utilities_value = find_sentence(contract_text, ("жку",))
+
+    early_termination_value = find_sentence(contract_text, ("досроч",))
+    rent_increase_value = find_sentence(contract_text, ("повыш", "плат"))
+    if rent_increase_value == "не указано":
+        rent_increase_value = find_sentence(contract_text, ("измен", "плат"))
+
+    return [
+        {"label": "Вид договора", "value": title},
+        {"label": "Объект", "value": object_value},
+        {"label": "Срок найма", "value": term_value},
+        {"label": "Плата в месяц", "value": payment_value},
+        {"label": "ЖКУ", "value": utilities_value},
+        {"label": "Обеспечительный платеж", "value": deposit_value},
+        {"label": "Досрочное прекращение", "value": early_termination_value},
+        {"label": "Повышение платы", "value": rent_increase_value},
+    ]
 
 
 def build_placeholder_request(placeholders: list[str]) -> str:
@@ -654,6 +708,7 @@ def get_session(session_id: str, user: User = Depends(get_current_user), db: Ses
         "participants": session.participants,
         "versions": session.versions,
         "latest_version": latest_version,
+        "key_terms": build_key_terms(latest_version.content) if latest_version else [],
         "messages": messages,
     }
 
@@ -892,6 +947,7 @@ def get_review_contract(invite_token: str, db: Session = Depends(get_db)):
         "title": session.title,
         "status": session.status,
         "contract": latest_version.content,
+        "key_terms": build_key_terms(latest_version.content),
         "approved": party_2.approval_status == ApprovalStatus.approved,
         "finalized": session.status == SessionStatus.finalized,
         "download_token": session.download_token,

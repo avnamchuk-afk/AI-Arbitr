@@ -46,6 +46,29 @@ function formatSessionTimestamp(session) {
   });
 }
 
+function KeyTermsCard({ terms }) {
+  const visibleTerms = (terms || []).filter((term) => term.value && term.value !== "не указано");
+  if (!visibleTerms.length) return null;
+  return (
+    <section className="key-terms-card">
+      <strong>Ключевые условия</strong>
+      <div className="key-terms-list">
+        {visibleTerms.map((term, index) => (
+          <div className="key-term" key={`${term.label}-${index}`}>
+            <span className="key-check">
+              <Check size={14} />
+            </span>
+            <div>
+              <small>{term.label}</small>
+              <p>{term.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function App() {
   const [email, setEmail] = useState("");
   const [authMode, setAuthMode] = useState("register");
@@ -445,6 +468,7 @@ function App() {
                   </a>
                 )}
               </div>
+              <KeyTermsCard terms={reviewData.key_terms} />
               <article className="review-contract">{reviewData.contract}</article>
               {reviewData.approved || reviewData.finalized ? (
                 <div className="review-approved">
@@ -700,6 +724,7 @@ function App() {
                           Введите данные второй стороны и email. На него будет направлена ссылка для просмотра
                           договора и подтверждения согласия без регистрации.
                         </p>
+                        <KeyTermsCard terms={sessionDetail?.key_terms} />
                         <div className="party-form">
                           <input
                             value={partyName}
