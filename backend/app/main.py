@@ -114,6 +114,18 @@ AI-Арбитр не является третейским судом, арби�
 Исполнитель: [реквизиты]
 """
 
+CONTRACT_NEXT_STEP_TEXT = """
+
+---
+
+Я подготовил проект договора и сохранил его как текущую версию.
+
+Можете задать мне любые вопросы по тексту: например, что означает отдельный пункт,
+какие риски есть у стороны, что лучше уточнить или изменить.
+
+Когда вопросов не останется, укажите ниже данные второй стороны и email — я подготовлю
+ссылку для согласования договора."""
+
 
 @app.get("/health")
 def health():
@@ -485,10 +497,13 @@ async def send_message(
             "YANDEX_GPT_FOLDER_ID в .env, чтобы генерировать проекты договоров."
         )
 
+    contract_text = answer
+    if should_save_contract_version:
+        answer = answer + CONTRACT_NEXT_STEP_TEXT
     answer = warning + answer
     db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
     if should_save_contract_version:
-        save_contract_version(db, session, answer)
+        save_contract_version(db, session, contract_text)
     db.commit()
     return {"content": answer, "contract_saved": should_save_contract_version}
 
