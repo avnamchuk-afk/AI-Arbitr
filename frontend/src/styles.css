@@ -142,6 +142,7 @@ button {
   gap: 8px;
 }
 
+.empty-state button,
 .new-contract {
   display: flex;
   align-items: center;

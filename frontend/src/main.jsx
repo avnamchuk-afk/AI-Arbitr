@@ -403,7 +403,9 @@ function App() {
               с ГК и обычной практикой, согласовать его с другой стороной, напомнить о сроках
               и разрешить спор, если он возникнет.
             </p>
-            <button onClick={createSession}>Создать первый договор</button>
+            <button onClick={createSession}>
+              <Plus size={18} /> Новый договор
+            </button>
           </div>
         ) : (
           <div className={isEmptySession ? "session-stage start-session" : "session-stage active-session"}>
