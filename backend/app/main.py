@@ -265,6 +265,26 @@ def build_reasoning_note(content: str) -> str:
     return "Что делает Арби:\n" + "\n".join(f"• {step}" for step in steps)
 
 
+def build_question_reasoning_note(question: str) -> str:
+    return (
+        "Что делает Арби:\n"
+        "• Вопрос понятен.\n"
+        "• Проверяю его по текущей редакции договора.\n"
+        "• Сверяю ответ с обычной практикой и нормами ГК РФ.\n"
+        "• Отвечаю коротко и простым языком, без генерации новой версии договора."
+    )
+
+
+def build_update_reasoning_note(change: str) -> str:
+    return (
+        "Что делает Арби:\n"
+        "• Нужно добавить новое условие в договор.\n"
+        "• Проверяю, не противоречит ли оно ГК РФ и логике договора.\n"
+        "• Ищу раздел договора, куда его правильно включить.\n"
+        "• Формулирую норму и готовлю новую редакцию договора."
+    )
+
+
 def infer_session_title(content: str) -> str:
     normalized = content.lower()
     title_rules = [
@@ -814,10 +834,20 @@ async def send_message(
             "Для MVP лучше использовать условные обозначения.\n\n"
         )
 
+    latest_version_before_answer = get_latest_version(db, session)
+    is_contract_update = payload.content.startswith(CONTRACT_UPDATE_PREFIX)
     if session.title == "Новый договор":
-        session.title = infer_session_title(payload.content)
+        title_source = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
+        session.title = infer_session_title(title_source)
     db.add(Message(session_id=session.id, role=MessageRole.user, content=payload.content))
-    reasoning_note = "" if session.status == SessionStatus.finalized else build_reasoning_note(payload.content)
+    if session.status == SessionStatus.finalized:
+        reasoning_note = ""
+    elif latest_version_before_answer is None:
+        reasoning_note = build_reasoning_note(payload.content)
+    elif is_contract_update:
+        reasoning_note = build_update_reasoning_note(payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip())
+    else:
+        reasoning_note = build_question_reasoning_note(payload.content)
     if reasoning_note:
         db.add(Message(session_id=session.id, role=MessageRole.system, content=reasoning_note))
     db.commit()
@@ -835,9 +865,9 @@ async def send_message(
                 .all()
             )
             prompt = build_dispute_prompt(final_version.content, format_history(messages), payload.content)
-        elif session.status != SessionStatus.finalized and get_latest_version(db, session) is not None:
-            latest_version = get_latest_version(db, session)
-            if payload.content.startswith(CONTRACT_UPDATE_PREFIX):
+        elif session.status != SessionStatus.finalized and latest_version_before_answer is not None:
+            latest_version = latest_version_before_answer
+            if is_contract_update:
                 requested_change = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
                 prompt = [
                     {"role": "system", "text": CONTRACT_SYSTEM_PROMPT},
@@ -858,8 +888,12 @@ async def send_message(
                         "role": "system",
                         "text": (
                             "Ты AI-Арбитр. Пользователь задает вопрос по уже подготовленному договору. "
-                            "Ответь простым языком, коротко и практически. Не генерируй договор заново. "
-                            "Если есть риск или развилка, объясни ее понятными словами."
+                            "Ответь простым языком, конкретно и практически. Не генерируй договор заново. "
+                            "Сначала дай прямой ответ на вопрос, затем кратко объясни почему. "
+                            "Если вопрос про изменение цены, срок, расторжение, депозит или ответственность, "
+                            "обязательно проверь, что написано в договоре, и отдельно укажи, зависит ли ответ "
+                            "от условия договора или от соглашения сторон. Если по закону нужна оговорка "
+                            "или согласие другой стороны, скажи это прямо."
                         ),
                     },
                     {
