@@ -93,10 +93,7 @@ function App() {
 
   useEffect(() => {
     if (!authed || !email) return;
-    fetch(`${API_URL}/sessions`, { credentials: "include" })
-      .then((res) => res.json())
-      .then(setSessions)
-      .catch(() => setSessions([]));
+    loadSessions();
   }, [authed, email]);
 
   useEffect(() => {
@@ -138,6 +135,15 @@ function App() {
     setCurrentSession(detail.session);
     setMessages(detail.messages || []);
     setContractText(detail.latest_version?.content || "");
+  }
+
+  async function loadSessions() {
+    try {
+      const response = await fetch(`${API_URL}/sessions`, { credentials: "include" });
+      setSessions(await response.json());
+    } catch {
+      setSessions([]);
+    }
   }
 
   async function login(event) {
@@ -214,6 +220,7 @@ function App() {
         setAppNotice("Проект договора сгенерирован и сохранен как текущая версия.");
       }
       loadSession(currentSession.id);
+      loadSessions();
     } finally {
       if (thinkingTimer) window.clearInterval(thinkingTimer);
       setThinking(false);

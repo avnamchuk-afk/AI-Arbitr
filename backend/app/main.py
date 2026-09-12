@@ -154,6 +154,29 @@ def build_reasoning_note(content: str) -> str:
     return "Что делает Арби:\n" + "\n".join(f"• {step}" for step in steps)
 
 
+def infer_session_title(content: str) -> str:
+    normalized = content.lower()
+    title_rules = [
+        (("найм", "квартир", "жил"), "Найм жилья"),
+        (("аренд",), "Аренда"),
+        (("лендинг", "сайт", "веб", "landing"), "Лендинг"),
+        (("юруслуг", "юридическ", "консультац", "претензи"), "Юруслуги"),
+        (("оказан", "услуг"), "Услуги"),
+        (("подряд", "ремонт", "строитель"), "Подряд"),
+        (("купл", "продаж", "поставк"), "Купля-продажа"),
+        (("заем", "займ", "долг"), "Заем"),
+        (("ндаш", "nda", "конфиденциаль"), "NDA"),
+    ]
+    for keywords, title in title_rules:
+        if any(keyword in normalized for keyword in keywords):
+            return title
+
+    compact = " ".join(content.replace("\n", " ").split())
+    if not compact:
+        return "Новый договор"
+    return compact[:36].rstrip(" .,;:") or "Новый договор"
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -512,6 +535,8 @@ async def send_message(
             "Для MVP лучше использовать условные обозначения.\n\n"
         )
 
+    if session.title == "Новый договор":
+        session.title = infer_session_title(payload.content)
     db.add(Message(session_id=session.id, role=MessageRole.user, content=payload.content))
     reasoning_note = "" if session.status == SessionStatus.finalized else build_reasoning_note(payload.content)
     if reasoning_note:
