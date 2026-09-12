@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Check, Copy, Download, LogOut, Menu, Plus, Send } from "lucide-react";
 import "./styles.css";
@@ -23,6 +23,9 @@ function App() {
   const [contractText, setContractText] = useState("");
   const [changesText, setChangesText] = useState("");
   const [appNotice, setAppNotice] = useState("");
+  const [partyName, setPartyName] = useState("");
+  const [partyEmail, setPartyEmail] = useState("");
+  const messagesEndRef = useRef(null);
 
   const pendingInvite = getInviteTokenFromPath();
 
@@ -74,6 +77,10 @@ function App() {
     if (!currentSession) return;
     loadSession(currentSession.id);
   }, [currentSession?.id]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, thinking, appNotice, sessionDetail?.latest_version?.id]);
 
   function getInviteTokenFromPath() {
     const match = window.location.pathname.match(/^\/invite\/([^/]+)$/);
@@ -160,10 +167,17 @@ function App() {
     const response = await fetch(`${API_URL}/sessions/${currentSession.id}/invite`, {
       method: "POST",
       credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ party_name: partyName, email: partyEmail || null }),
     });
     if (!response.ok) return;
     const data = await response.json();
     setInviteLink(data.invite_link);
+    setAppNotice(
+      data.sent
+        ? "Ссылка отправлена второй стороне на email."
+        : "SMTP пока не настроен. Скопируйте ссылку и отправьте второй стороне вручную."
+    );
   }
 
   async function approve() {
@@ -200,6 +214,9 @@ function App() {
     if (!token) return;
     window.open(`${API_URL}/download/${token}.pdf`, "_blank", "noopener,noreferrer");
   }
+
+  const hasContractVersion = Boolean(sessionDetail?.latest_version);
+  const isFinalized = currentSession?.status === "finalized";
 
   if (!authed) {
     return (
@@ -280,74 +297,75 @@ function App() {
           </div>
         ) : (
           <>
-            {appNotice && <div className="app-notice">{appNotice}</div>}
-            <div className="work-area">
-              <div className="dialogue">
-                <div className="messages">
-                  {messages.map((message, index) => (
-                    <article key={index} className={`message ${message.role}`}>
-                      {message.content}
-                    </article>
-                  ))}
-                  {thinking && <article className="message assistant">Арби думает...</article>}
-                </div>
-              </div>
-              <aside className="contract-panel">
-                <div className="panel-header">
-                  <strong>Версия договора</strong>
-                  <span>{currentSession.status}</span>
-                </div>
-                <p className="panel-help">
-                  После генерации или правок перенесите актуальный текст договора в это поле и нажмите
-                  “Сохранить версию”. Стороны соглашаются именно с сохраненной версией.
-                </p>
-                <textarea
-                  value={contractText}
-                  onChange={(event) => setContractText(event.target.value)}
-                  placeholder="Вставьте или отредактируйте текущую версию договора"
-                />
-                <div className="panel-actions">
-                  <button onClick={saveVersion}>Сохранить версию</button>
-                  <button onClick={approve}>
-                    <Check size={16} /> Согласен
-                  </button>
-                </div>
-                {(sessionDetail?.session?.download_token || currentSession.download_token) && (
-                  <button className="download-button" onClick={downloadPdf}>
-                    <Download size={16} /> Скачать PDF
-                  </button>
+            <div className="chat-thread">
+              {appNotice && <div className="app-notice">{appNotice}</div>}
+              <div className="messages">
+                {messages.map((message, index) => (
+                  <article key={index} className={`message ${message.role}`}>
+                    {message.content}
+                  </article>
+                ))}
+                {thinking && (
+                  <article className="message assistant thinking">
+                    <span /> Арби думает...
+                  </article>
                 )}
-                <textarea
-                  className="changes"
-                  value={changesText}
-                  onChange={(event) => setChangesText(event.target.value)}
-                  placeholder="Предложить правки"
-                />
-                <small className="panel-hint">
-                  Правки попадут в историю. Новую редакцию договора нужно сохранить вручную после обработки.
-                </small>
-                <button className="secondary" onClick={requestChanges}>
-                  Отправить правки
-                </button>
-                {sessionDetail?.participants && (
-                  <div className="approvals">
-                    {sessionDetail.participants.map((participant) => (
-                      <p key={participant.id}>
-                        {participant.role === "party_1" ? "Сторона 1" : "Сторона 2"}:{" "}
-                        {participant.approval_status}
+                {hasContractVersion && !isFinalized && (
+                  <section className="next-step">
+                    <div>
+                      <strong>Проект договора сохранён.</strong>
+                      <p>
+                        Задайте Арби вопросы по тексту договора. Когда всё понятно и вопросов не осталось,
+                        укажите данные второй стороны и email для отправки ссылки на согласование.
                       </p>
-                    ))}
-                  </div>
+                    </div>
+                    <div className="party-form">
+                      <input
+                        value={partyName}
+                        onChange={(event) => setPartyName(event.target.value)}
+                        placeholder="Имя или название второй стороны"
+                      />
+                      <input
+                        value={partyEmail}
+                        onChange={(event) => setPartyEmail(event.target.value)}
+                        placeholder="email второй стороны"
+                      />
+                      <button onClick={createInvite}>Подготовить ссылку согласования</button>
+                    </div>
+                    {inviteLink && (
+                      <button className="copy-link" onClick={() => navigator.clipboard?.writeText(inviteLink)}>
+                        <Copy size={16} /> {inviteLink}
+                      </button>
+                    )}
+                    <details className="contract-details">
+                      <summary>Посмотреть текущую версию договора</summary>
+                      <textarea
+                        value={contractText}
+                        onChange={(event) => setContractText(event.target.value)}
+                        placeholder="Текущая версия договора"
+                      />
+                      <div className="panel-actions">
+                        <button onClick={saveVersion}>Сохранить правки</button>
+                        <button onClick={approve}>
+                          <Check size={16} /> Согласен с версией
+                        </button>
+                      </div>
+                    </details>
+                  </section>
                 )}
-                <button className="secondary" onClick={createInvite}>
-                  Создать ссылку для Стороны 2
-                </button>
-                {inviteLink && (
-                  <button className="copy-link" onClick={() => navigator.clipboard?.writeText(inviteLink)}>
-                    <Copy size={16} /> {inviteLink}
-                  </button>
+                {isFinalized && (
+                  <section className="next-step">
+                    <strong>Договор финализирован.</strong>
+                    <p>Теперь в этом чате можно разобрать спор. Напишите “СПОР” и опишите ситуацию.</p>
+                    {(sessionDetail?.session?.download_token || currentSession.download_token) && (
+                      <button className="download-button" onClick={downloadPdf}>
+                        <Download size={16} /> Скачать PDF
+                      </button>
+                    )}
+                  </section>
                 )}
-              </aside>
+                <div ref={messagesEndRef} />
+              </div>
             </div>
             <div className="composer">
               <textarea

@@ -26,7 +26,7 @@ from app.models.entities import (
     now_utc,
 )
 from app.services.auth import generate_raw_token, hash_token, make_session_cookie, read_session_cookie, token_expires_at
-from app.services.email import send_magic_link, smtp_is_configured
+from app.services.email import send_contract_invite, send_magic_link, smtp_is_configured
 from app.services.pdf import build_contract_pdf
 from app.services.privacy import contains_passport_like_data
 from app.services.prompts import CONTRACT_SYSTEM_PROMPT, build_dispute_prompt
@@ -60,6 +60,11 @@ class VersionRequest(BaseModel):
 
 class ChangesRequest(BaseModel):
     content: str
+
+
+class InviteRequest(BaseModel):
+    party_name: str = ""
+    email: EmailStr | None = None
 
 
 DEMO_SESSION_TITLE = "Пример: договор на лендинг"
@@ -358,7 +363,12 @@ def save_contract_version(db: Session, session: ContractSession, content: str) -
 
 
 @app.post("/sessions/{session_id}/invite")
-def create_invite(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_invite(
+    session_id: str,
+    payload: InviteRequest | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     session = db.get(ContractSession, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Сессия не найдена")
@@ -368,7 +378,21 @@ def create_invite(session_id: str, user: User = Depends(get_current_user), db: S
         session.invite_token = uuid.uuid4()
         db.commit()
         db.refresh(session)
-    return {"invite_link": f"{settings.app_base_url}/invite/{session.invite_token}"}
+    invite_link = f"{settings.app_base_url}/invite/{session.invite_token}"
+    sent = False
+    if payload and payload.email:
+        send_contract_invite(payload.email, invite_link, session.title)
+        sent = smtp_is_configured()
+        party_label = payload.party_name.strip() or str(payload.email)
+        db.add(
+            Message(
+                session_id=session.id,
+                role=MessageRole.system,
+                content=f"Ссылка на согласование подготовлена для {party_label}: {payload.email}",
+            )
+        )
+        db.commit()
+    return {"invite_link": invite_link, "sent": sent}
 
 
 @app.post("/invites/{invite_token}/accept")

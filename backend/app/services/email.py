@@ -32,3 +32,30 @@ def send_magic_link(email: str, link: str) -> None:
             smtp.starttls()
             smtp.login(settings.smtp_user, settings.smtp_password)
             smtp.send_message(message)
+
+
+def send_contract_invite(email: str, link: str, title: str) -> None:
+    if not smtp_is_configured():
+        return
+
+    message = EmailMessage()
+    message["Subject"] = "Согласование договора в AI-Арбитр"
+    message["From"] = settings.smtp_from
+    message["To"] = email
+    message.set_content(
+        "Здравствуйте!\n\n"
+        f"Вам направлен договор на согласование: {title}.\n\n"
+        "Откройте ссылку, войдите по email и проверьте текущую редакцию договора:\n"
+        f"{link}\n\n"
+        "Если условия подходят, подтвердите согласие. Если нет — предложите правки.\n"
+    )
+
+    if settings.smtp_port == 465:
+        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as smtp:
+            smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(message)
+    else:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
+            smtp.starttls()
+            smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(message)
