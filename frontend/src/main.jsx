@@ -379,31 +379,12 @@ function App() {
     setChatMode("question");
     setDraft("");
     setQuestionResolved(false);
-    setMessages((items) => [
-      ...items,
-      {
-        role: "assistant",
-        content: "Понял. Напишите вопрос по договору, а я отвечу простым языком и сверю ответ с текущей редакцией.",
-      },
-    ]);
   }
 
   function startAddition() {
     setChatMode("add");
     setDraft("");
     setQuestionResolved(false);
-    setMessages((items) => [
-      ...items,
-      {
-        role: "system",
-        content:
-          "Что делает Арби:\n• Нужно добавить условие в договор.\n• Сначала проверю, не противоречит ли оно ГК РФ.\n• Затем найду раздел, куда его правильно включить.\n• После этого сформулирую одну норму и подготовлю новую редакцию.",
-      },
-      {
-        role: "assistant",
-        content: "Опишите одно условие, которое нужно добавить. Например: запретить проживание с животными без письменного согласия наймодателя.",
-      },
-    ]);
   }
 
   function startAgreement() {
@@ -696,6 +677,19 @@ function App() {
                           <button onClick={() => setQuestionResolved(false)}>Да</button>
                           <button onClick={startQuestion}>Нет, задать еще вопрос</button>
                         </div>
+                      </div>
+                    ) : chatMode === "question" ? (
+                      <div className="quick-flow active-flow">
+                        <strong>Понял. Напишите вопрос по договору.</strong>
+                        <p>Сверю его с текущей редакцией и отвечу простым языком.</p>
+                      </div>
+                    ) : chatMode === "add" ? (
+                      <div className="quick-flow active-flow">
+                        <strong>Добавим новое условие.</strong>
+                        <p>
+                          Сначала проверю его соответствие ГК РФ, затем найду правильный раздел
+                          и сформулирую одну норму для новой редакции.
+                        </p>
                       </div>
                     ) : chatMode === "agree" ? (
                       <div className="quick-flow">
