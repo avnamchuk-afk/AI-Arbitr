@@ -34,7 +34,7 @@ def send_magic_link(email: str, link: str) -> None:
             smtp.send_message(message)
 
 
-def send_contract_invite(email: str, link: str, title: str) -> None:
+def send_contract_invite(email: str, link: str, title: str, pdf_link: str | None = None) -> None:
     if not smtp_is_configured():
         return
 
@@ -44,10 +44,11 @@ def send_contract_invite(email: str, link: str, title: str) -> None:
     message["To"] = email
     message.set_content(
         "Здравствуйте!\n\n"
-        f"Вам направлен договор на согласование: {title}.\n\n"
-        "Откройте ссылку, войдите по email и проверьте текущую редакцию договора:\n"
+        f"Вам направлен на согласование договор: {title}.\n\n"
+        "Посмотреть договор и подтвердить согласие можно по ссылке:\n"
         f"{link}\n\n"
-        "Если условия подходят, подтвердите согласие. Если нет — предложите правки.\n"
+        + (f"PDF-версия договора:\n{pdf_link}\n\n" if pdf_link else "")
+        + "Если условия подходят, нажмите кнопку согласия и укажите свои данные.\n"
     )
 
     if settings.smtp_port == 465:

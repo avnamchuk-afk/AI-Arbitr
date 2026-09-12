@@ -71,6 +71,13 @@ class InviteRequest(BaseModel):
     email: EmailStr | None = None
 
 
+class ReviewApproveRequest(BaseModel):
+    full_name: str
+    passport: str
+    email: EmailStr
+    personal_data_accepted: bool
+
+
 GUEST_EMAIL_SUFFIX = "@guest.ai-arbitr.local"
 DEMO_SESSION_TITLE = "пример"
 LEGACY_DEMO_SESSION_TITLE = "Пример: договор на лендинг"
@@ -642,44 +649,140 @@ def create_invite(
         session.invite_token = uuid.uuid4()
         db.commit()
         db.refresh(session)
-    invite_link = f"{settings.app_base_url}/invite/{session.invite_token}"
+    invite_link = f"{settings.app_base_url}/review/{session.invite_token}"
+    pdf_link = f"{settings.api_base_url}/review/{session.invite_token}.pdf"
     sent = False
     if payload and payload.email:
-        send_contract_invite(payload.email, invite_link, session.title)
+        send_contract_invite(payload.email, invite_link, session.title, pdf_link)
         sent = smtp_is_configured()
         party_label = payload.party_name.strip() or str(payload.email)
         db.add(
             Message(
                 session_id=session.id,
                 role=MessageRole.system,
-                content=f"Ссылка на согласование подготовлена для {party_label}: {payload.email}",
+                content=f"Ссылка на просмотр и согласие отправлена для {party_label}: {payload.email}",
             )
         )
         db.commit()
     return {"invite_link": invite_link, "sent": sent}
 
 
-@app.post("/invites/{invite_token}/accept")
-def accept_invite(invite_token: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_session_by_review_token(db: Session, invite_token: str) -> ContractSession:
     session = db.query(ContractSession).filter(ContractSession.invite_token == invite_token).one_or_none()
     if session is None:
-        raise HTTPException(status_code=404, detail="Приглашение не найдено")
-    if session.owner_user_id == user.id:
-        raise HTTPException(status_code=400, detail="Сторона 1 уже привязана к договору")
+        raise HTTPException(status_code=404, detail="Ссылка согласования не найдена")
+    return session
+
+
+@app.get("/review/{invite_token}.pdf")
+def download_review_pdf(invite_token: str, db: Session = Depends(get_db)):
+    session = get_session_by_review_token(db, invite_token)
+    latest_version = get_latest_version(db, session)
+    if latest_version is None:
+        raise HTTPException(status_code=404, detail="Версия договора не найдена")
+    messages = (
+        db.query(Message)
+        .filter(Message.session_id == session.id)
+        .order_by(Message.created_at.asc())
+        .all()
+    )
+    pdf_bytes = build_contract_pdf(session, latest_version, session.participants, messages)
+    filename = f"ai-arbitr-review-{session.id}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@app.get("/review/{invite_token}")
+def get_review_contract(invite_token: str, db: Session = Depends(get_db)):
+    session = get_session_by_review_token(db, invite_token)
+    latest_version = get_latest_version(db, session)
+    if latest_version is None:
+        raise HTTPException(status_code=404, detail="Версия договора не найдена")
+    party_2 = (
+        db.query(ContractParticipant)
+        .filter(ContractParticipant.session_id == session.id, ContractParticipant.role == ParticipantRole.party_2)
+        .one()
+    )
+    return {
+        "session_id": session.id,
+        "title": session.title,
+        "status": session.status,
+        "contract": latest_version.content,
+        "approved": party_2.approval_status == ApprovalStatus.approved,
+        "finalized": session.status == SessionStatus.finalized,
+        "download_token": session.download_token,
+        "pdf_link": f"{settings.api_base_url}/review/{invite_token}.pdf",
+    }
+
+
+@app.post("/review/{invite_token}/approve")
+def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db: Session = Depends(get_db)):
+    if not payload.personal_data_accepted:
+        raise HTTPException(status_code=400, detail="Нужно согласие на обработку персональных данных")
+
+    session = get_session_by_review_token(db, invite_token)
+    latest_version = get_latest_version(db, session)
+    if latest_version is None:
+        raise HTTPException(status_code=400, detail="Нет версии договора для согласования")
+    if session.status == SessionStatus.finalized:
+        return {"finalized": True, "download_token": session.download_token}
 
     participant = (
         db.query(ContractParticipant)
         .filter(ContractParticipant.session_id == session.id, ContractParticipant.role == ParticipantRole.party_2)
         .one()
     )
-    if participant.user_id is None:
-        participant.user_id = user.id
-        participant.joined_at = now_utc()
-        db.commit()
-    elif participant.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Приглашение уже принято другой стороной")
+    user = db.query(User).filter(User.email == payload.email).one_or_none()
+    if user is None:
+        user = User(email=payload.email)
+        db.add(user)
+        db.flush()
 
-    return {"session_id": session.id}
+    owner = db.get(User, session.owner_user_id)
+    if owner is None:
+        raise HTTPException(status_code=400, detail="Владелец договора не найден")
+    if count_completed_today(db, owner) >= 10:
+        raise HTTPException(
+            status_code=429,
+            detail="Достигнут лимит бета-версии: 10 завершенных договоров в день. Доступ будет восстановлен завтра",
+        )
+
+    participant.user_id = user.id
+    participant.joined_at = participant.joined_at or now_utc()
+    participant.approval_status = ApprovalStatus.approved
+    participant.approved_version_id = latest_version.id
+    session.status = SessionStatus.finalized
+    session.finalized_at = now_utc()
+    session.download_token = session.download_token or uuid.uuid4()
+    session.is_completed = True
+    latest_version.is_final = True
+    db.add(
+        Message(
+            session_id=session.id,
+            role=MessageRole.system,
+            content=(
+                "Вторая сторона согласовала договор.\n"
+                f"ФИО: {payload.full_name.strip()}\n"
+                f"Паспортные данные: {payload.passport.strip()}\n"
+                f"Email: {payload.email}"
+            ),
+        )
+    )
+    db.add(
+        Message(
+            session_id=session.id,
+            role=MessageRole.assistant,
+            content=(
+                "Вторая сторона согласовала договор. Финальная PDF-версия сформирована "
+                f"и доступна по ссылке: {settings.api_base_url}/download/{session.download_token}.pdf"
+            ),
+        )
+    )
+    db.commit()
+    return {"finalized": True, "download_token": session.download_token}
 
 
 @app.post("/sessions/{session_id}/messages")

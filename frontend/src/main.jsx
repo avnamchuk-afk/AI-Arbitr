@@ -78,12 +78,19 @@ function App() {
   const [authPromptCopy, setAuthPromptCopy] = useState(
     "Укажите email, чтобы сохранить этот договор, получить ссылку для входа и отправить договор второй стороне."
   );
+  const [reviewData, setReviewData] = useState(null);
+  const [reviewForm, setReviewForm] = useState({ fullName: "", passport: "", email: "", accepted: false });
+  const [reviewNotice, setReviewNotice] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const pendingInvite = getInviteTokenFromPath();
+  const reviewToken = getReviewTokenFromPath();
 
   useEffect(() => {
-    if (pendingInvite) localStorage.setItem("ai-arbitr-pending-invite", pendingInvite);
+    if (reviewToken) {
+      setAuthReady(true);
+      return;
+    }
     fetch(`${API_URL}/auth/me`, { credentials: "include" })
       .then((res) => {
         if (!res.ok) throw new Error("not authed");
@@ -107,7 +114,12 @@ function App() {
           .catch(() => setAuthed(false))
       )
       .finally(() => setAuthReady(true));
-  }, [pendingInvite]);
+  }, [reviewToken]);
+
+  useEffect(() => {
+    if (!reviewToken) return;
+    loadReview(reviewToken);
+  }, [reviewToken]);
 
   useEffect(() => {
     localStorage.setItem("ai-arbitr-draft", draft);
@@ -119,60 +131,6 @@ function App() {
   }, [authed]);
 
   useEffect(() => {
-    if (!authed) return;
-    const token = localStorage.getItem("ai-arbitr-pending-invite");
-    if (!token) return;
-    if (isGuest) {
-      setAuthMode("register");
-      setAuthPromptTitle("Войти как вторая сторона");
-      setAuthPromptCopy(
-        "Чтобы присоединиться к согласованию, укажите email второй стороны. Так мы отделим вашу учетку от стороны 1 и сохраним историю согласования."
-      );
-      setLoginNotice("Ссылка открыта. Войдите или зарегистрируйтесь как вторая сторона договора.");
-      setAuthPromptOpen(true);
-      return;
-    }
-    fetch(`${API_URL}/invites/${token}/accept`, { method: "POST", credentials: "include" })
-      .then((res) => {
-        if (!res.ok) {
-          return res.json().catch(() => ({})).then((error) => {
-            throw error;
-          });
-        }
-        return res.json();
-      })
-      .then((data) => {
-        localStorage.removeItem("ai-arbitr-pending-invite");
-        loadSession(data.session_id);
-        window.history.replaceState({}, "", "/");
-      })
-      .catch((error) => {
-        if (error?.detail === "Сторона 1 уже привязана к договору") {
-          fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" })
-            .then(() => fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" }))
-            .then((res) => res.json())
-            .then((user) => {
-              setEmail(user.email || "");
-              setUserId(user.id);
-              setIsGuest(true);
-              setAuthed(true);
-              setCurrentSession(null);
-              setSessions([]);
-              setAuthMode("register");
-              setAuthPromptTitle("Войти как вторая сторона");
-              setAuthPromptCopy(
-                "Эта ссылка предназначена для второй стороны договора. Укажите email второй стороны, чтобы присоединиться к отдельной учетке согласования."
-              );
-              setLoginNotice("Вы были стороной 1. Для согласования войдите как сторона 2.");
-              setAuthPromptOpen(true);
-            });
-          return;
-        }
-        setLoginNotice(error?.detail || "Приглашение недействительно или уже принято другой стороной");
-      });
-  }, [authed, isGuest]);
-
-  useEffect(() => {
     if (!currentSession) return;
     loadSession(currentSession.id);
   }, [currentSession?.id]);
@@ -181,9 +139,54 @@ function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, thinking, appNotice, sessionDetail?.latest_version?.id]);
 
-  function getInviteTokenFromPath() {
-    const match = window.location.pathname.match(/^\/invite\/([^/]+)$/);
+  function getReviewTokenFromPath() {
+    const match = window.location.pathname.match(/^\/review\/([^/]+)$/);
     return match ? match[1] : "";
+  }
+
+  async function loadReview(token) {
+    setReviewLoading(true);
+    setReviewNotice("");
+    try {
+      const response = await fetch(`${API_URL}/review/${token}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setReviewNotice(data.detail || "Ссылка согласования не найдена");
+        setReviewData(null);
+        return;
+      }
+      setReviewData(data);
+    } finally {
+      setReviewLoading(false);
+    }
+  }
+
+  async function approveReview(event) {
+    event.preventDefault();
+    if (!reviewToken) return;
+    setReviewNotice("");
+    const response = await fetch(`${API_URL}/review/${reviewToken}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        full_name: reviewForm.fullName,
+        passport: reviewForm.passport,
+        email: reviewForm.email,
+        personal_data_accepted: reviewForm.accepted,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setReviewNotice(data.detail || "Не удалось подтвердить согласие");
+      return;
+    }
+    setReviewNotice("Согласие зафиксировано. Финальная PDF-версия договора сформирована.");
+    setReviewData((current) => ({
+      ...current,
+      finalized: true,
+      approved: true,
+      download_token: data.download_token,
+    }));
   }
 
   async function loadSession(sessionId) {
@@ -378,8 +381,8 @@ function App() {
     setInviteLink(data.invite_link);
     setAppNotice(
       data.sent
-        ? "Ссылка отправлена второй стороне на email."
-        : "SMTP пока не настроен. Скопируйте ссылку и отправьте второй стороне вручную."
+        ? "Ссылка на просмотр договора отправлена второй стороне на email."
+        : "SMTP пока не настроен. Скопируйте ссылку просмотра и отправьте второй стороне вручную."
     );
   }
 
@@ -450,6 +453,76 @@ function App() {
           <h1>AI-Арбитр</h1>
           <p className="notice">Загружаю рабочее пространство...</p>
         </div>
+      </main>
+    );
+  }
+
+  if (reviewToken) {
+    const finalPdfLink = reviewData?.download_token ? `${API_URL}/download/${reviewData.download_token}.pdf` : "";
+    return (
+      <main className="review-page">
+        <section className="review-shell">
+          <header className="review-header">
+            <span>AI-arbitr</span>
+            <h1>{reviewData?.title || "Согласование договора"}</h1>
+            <p>Вам направлен договор на согласование. Проверьте текст и подтвердите согласие, если условия подходят.</p>
+          </header>
+          {reviewLoading && <p className="notice">Загружаю договор...</p>}
+          {reviewNotice && <p className="app-notice">{reviewNotice}</p>}
+          {reviewData && (
+            <>
+              <div className="review-actions">
+                <a className="review-link-button" href={reviewData.pdf_link} target="_blank" rel="noreferrer">
+                  <Download size={16} /> Открыть PDF
+                </a>
+                {finalPdfLink && (
+                  <a className="review-link-button" href={finalPdfLink} target="_blank" rel="noreferrer">
+                    <Download size={16} /> Финальная PDF-версия
+                  </a>
+                )}
+              </div>
+              <article className="review-contract">{reviewData.contract}</article>
+              {reviewData.approved || reviewData.finalized ? (
+                <div className="review-approved">
+                  <Check size={18} /> Согласие уже зафиксировано.
+                </div>
+              ) : (
+                <form className="review-form" onSubmit={approveReview}>
+                  <h2>Согласиться с договором</h2>
+                  <input
+                    value={reviewForm.fullName}
+                    onChange={(event) => setReviewForm((form) => ({ ...form, fullName: event.target.value }))}
+                    placeholder="ФИО"
+                    required
+                  />
+                  <input
+                    value={reviewForm.passport}
+                    onChange={(event) => setReviewForm((form) => ({ ...form, passport: event.target.value }))}
+                    placeholder="Паспортные данные"
+                    required
+                  />
+                  <input
+                    value={reviewForm.email}
+                    onChange={(event) => setReviewForm((form) => ({ ...form, email: event.target.value }))}
+                    placeholder="email@example.com"
+                    required
+                  />
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={reviewForm.accepted}
+                      onChange={(event) => setReviewForm((form) => ({ ...form, accepted: event.target.checked }))}
+                    />
+                    <span>Я согласен на обработку персональных данных</span>
+                  </label>
+                  <button>
+                    <Check size={16} /> Согласиться
+                  </button>
+                </form>
+              )}
+            </>
+          )}
+        </section>
       </main>
     );
   }
@@ -648,8 +721,8 @@ function App() {
                       <div className="quick-flow">
                         <strong>Если все понятно и вопросов нет, сохраняю версию.</strong>
                         <p>
-                          Введите email второй стороны договора. На него будет направлена ссылка-приглашение
-                          для присоединения к сессии согласования.
+                          Введите данные второй стороны и email. На него будет направлена ссылка для просмотра
+                          договора и подтверждения согласия без регистрации.
                         </p>
                         <div className="party-form">
                           <input

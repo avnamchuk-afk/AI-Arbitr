@@ -52,6 +52,135 @@ button:hover {
   padding: 24px;
 }
 
+.review-page {
+  min-height: 100vh;
+  padding: 20px;
+  background:
+    linear-gradient(135deg, #edf4f2 0%, #f7f5ef 48%, #eef2f7 100%);
+}
+
+.review-shell {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+
+.review-header {
+  display: grid;
+  gap: 8px;
+  padding: 20px 0 4px;
+}
+
+.review-header span {
+  color: var(--accent);
+  font-weight: 760;
+}
+
+.review-header h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.review-header p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.review-link-button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgb(64 90 138 / 32%);
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: var(--accent-strong);
+  text-decoration: none;
+  background: rgb(255 255 255 / 54%);
+  backdrop-filter: var(--blur);
+}
+
+.review-contract {
+  max-height: 54vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.55;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
+}
+
+.review-form {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
+}
+
+.review-form h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.review-form input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: var(--ink);
+  background: rgb(255 255 255 / 66%);
+  outline: none;
+}
+
+.review-form input:focus {
+  border-color: rgb(64 90 138 / 55%);
+  box-shadow: 0 0 0 3px rgb(64 90 138 / 12%);
+}
+
+.review-form button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  padding: 11px 14px;
+  color: #ffffff;
+  background: rgb(64 90 138 / 88%);
+}
+
+.review-approved {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid rgb(64 90 138 / 24%);
+  border-radius: 8px;
+  color: var(--accent-strong);
+  background: rgb(236 240 248 / 72%);
+  backdrop-filter: var(--blur);
+}
+
 .login-form {
   width: min(420px, 100%);
   display: grid;
