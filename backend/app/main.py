@@ -315,8 +315,6 @@ def create_session(user: User = Depends(get_current_user), db: Session = Depends
 
 @app.get("/sessions")
 def list_sessions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ensure_demo_session(db, user)
-    db.commit()
     return (
         db.query(ContractSession)
         .join(ContractParticipant, ContractParticipant.session_id == ContractSession.id)

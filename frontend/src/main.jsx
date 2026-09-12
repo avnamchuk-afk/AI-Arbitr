@@ -200,6 +200,7 @@ function App() {
     }
 
     setSessions((items) => items.filter((item) => item.id !== session.id));
+    loadSessions();
     if (currentSession?.id === session.id) {
       setCurrentSession(null);
       setSessionDetail(null);
