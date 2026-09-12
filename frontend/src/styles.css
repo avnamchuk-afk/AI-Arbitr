@@ -176,20 +176,25 @@ button {
 
 .empty-state {
   margin: auto;
-  max-width: 680px;
+  max-width: 560px;
   display: grid;
-  gap: 14px;
+  gap: 16px;
   text-align: center;
+  padding: 24px 12px;
 }
 
 .empty-state h2 {
   margin: 0;
-  font-size: 32px;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
 }
 
 .empty-state p {
+  margin: 0;
   color: #4e5966;
-  line-height: 1.6;
+  line-height: 1.55;
+  font-size: 16px;
 }
 
 .messages {
@@ -472,6 +477,21 @@ button {
 
   .chat-area {
     padding: 72px 14px 18px;
+  }
+
+  .empty-state {
+    max-width: 360px;
+    min-height: calc(100vh - 120px);
+    align-content: center;
+    padding: 18px 4px 40px;
+  }
+
+  .empty-state h2 {
+    font-size: 30px;
+  }
+
+  .empty-state p {
+    font-size: 15px;
   }
 
   .party-form {
