@@ -247,7 +247,7 @@ MONEY_RE = re.compile(r"(\d[\d\s]*(?:[.,]\d+)?\s*(?:руб\.?|рублей))", r
 
 def build_reasoning_note(content: str) -> str:
     normalized = content.lower()
-    if "найм" in normalized or "квартир" in normalized or "жил" in normalized:
+    if is_housing_rent_request(content):
         steps = [
             "Понятно, делаем договор найма жилого помещения.",
             "Проверяю применимые нормы ГК РФ о найме жилого помещения.",
@@ -266,6 +266,54 @@ def build_reasoning_note(content: str) -> str:
             "Генерирую первую версию договора.",
         ]
     return "Что делает Арби:\n" + "\n".join(f"• {step}" for step in steps)
+
+
+def is_housing_rent_request(content: str) -> bool:
+    normalized = content.lower().replace("ё", "е")
+    housing_markers = (
+        "жиль",
+        "жил",
+        "квартир",
+        "комнат",
+        "дом",
+        "помещени",
+    )
+    rent_markers = (
+        "аренд",
+        "найм",
+        "снять",
+        "сда",
+    )
+    return any(marker in normalized for marker in housing_markers) and any(
+        marker in normalized for marker in rent_markers
+    )
+
+
+def normalize_contract_legal_title(contract_text: str, user_request: str) -> str:
+    if not is_housing_rent_request(user_request):
+        return contract_text
+
+    legal_title = "Договор найма жилого помещения"
+    lines = contract_text.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if "договор" in stripped.lower() or index == 0:
+            prefix = ""
+            if stripped.startswith("### "):
+                prefix = "### "
+            elif stripped.startswith("## "):
+                prefix = "## "
+            elif stripped.startswith("# "):
+                prefix = "# "
+            elif stripped.startswith("**") and stripped.endswith("**"):
+                lines[index] = f"**{legal_title}**"
+                return "\n".join(lines)
+            lines[index] = f"{prefix}{legal_title}"
+            return "\n".join(lines)
+
+    return f"{legal_title}\n\n{contract_text}"
 
 
 def build_question_reasoning_note(question: str) -> str:
@@ -488,9 +536,12 @@ async def summarize_added_contract_norm(updated_contract: str, requested_change:
 
 
 def infer_session_title(content: str) -> str:
+    if is_housing_rent_request(content):
+        return "Найм жилья"
+
     normalized = content.lower()
     title_rules = [
-        (("найм", "квартир", "жил"), "Найм жилья"),
+        (("найм", "квартир", "жил", "жиль"), "Найм жилья"),
         (("аренд",), "Аренда"),
         (("лендинг", "сайт", "веб", "landing"), "Лендинг"),
         (("юруслуг", "юридическ", "консультац", "претензи"), "Юруслуги"),
@@ -1204,6 +1255,8 @@ async def send_message(
         answer = await ask_yandex_gpt(
             prompt
         )
+        if latest_version_before_answer is None:
+            answer = normalize_contract_legal_title(answer, payload.content)
         if is_contract_update:
             requested_change = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
             try:
