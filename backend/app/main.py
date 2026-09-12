@@ -353,6 +353,29 @@ def build_contract_gap_instruction() -> str:
     )
 
 
+async def summarize_added_contract_norm(updated_contract: str, requested_change: str) -> str:
+    prompt = [
+        {
+            "role": "system",
+            "text": (
+                "Ты AI-Арбитр. Пользователь попросил добавить условие в договор. "
+                "Перед тобой уже обновленная полная редакция договора. "
+                "Не выводи весь договор. Покажи только одну добавленную или измененную норму, "
+                "которую пользователь должен увидеть в чате. Затем задай вопрос: "
+                "«Переходим к согласованию?»"
+            ),
+        },
+        {
+            "role": "user",
+            "text": (
+                f"Просьба пользователя:\n{requested_change}\n\n"
+                f"Обновленная редакция договора:\n{updated_contract}"
+            ),
+        },
+    ]
+    return await ask_yandex_gpt(prompt)
+
+
 def infer_session_title(content: str) -> str:
     normalized = content.lower()
     title_rules = [
@@ -941,6 +964,7 @@ async def send_message(
 
     try:
         should_save_contract_version = session.status != SessionStatus.finalized
+        display_answer: str | None = None
         if session.status == SessionStatus.finalized and is_dispute:
             final_version = get_final_version(db, session)
             if final_version is None:
@@ -1028,6 +1052,16 @@ async def send_message(
         answer = await ask_yandex_gpt(
             prompt
         )
+        if is_contract_update:
+            requested_change = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
+            try:
+                display_answer = await summarize_added_contract_norm(answer, requested_change)
+            except YandexGPTError:
+                display_answer = (
+                    "Готово, я добавил условие в новую редакцию договора.\n\n"
+                    f"Суть добавленного условия: {requested_change}\n\n"
+                    "Переходим к согласованию?"
+                )
         if latest_version_before_answer is not None and not is_contract_update and looks_like_contract_text(answer):
             answer = (
                 "Да, вопрос понял, но модель начала возвращать текст договора вместо ответа. "
@@ -1050,7 +1084,7 @@ async def send_message(
         )
 
     contract_text = answer
-    answer = warning + answer
+    answer = warning + (display_answer or answer)
     db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
     if should_save_contract_version:
         save_contract_version(db, session, contract_text)
