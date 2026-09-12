@@ -1,4 +1,5 @@
 import uuid
+import re
 from io import BytesIO
 from datetime import datetime, time, timezone
 
@@ -240,6 +241,7 @@ DEMO_EXPLANATION = """Обеспечительный платеж — это с�
 • что естественный износ не считается ущербом."""
 
 CONTRACT_UPDATE_PREFIX = "ДОПОЛНИТЬ ДОГОВОР:"
+PLACEHOLDER_RE = re.compile(r"\[([^\[\]]+)\]")
 
 
 def build_reasoning_note(content: str) -> str:
@@ -297,6 +299,61 @@ def looks_like_contract_text(text: str) -> bool:
     ]
     marker_count = sum(1 for marker in contract_markers if marker in normalized)
     return marker_count >= 4 and len(text) > 1800
+
+
+def extract_placeholders(contract_text: str) -> list[str]:
+    placeholders: list[str] = []
+    seen = set()
+    for raw_placeholder in PLACEHOLDER_RE.findall(contract_text):
+        placeholder = " ".join(raw_placeholder.split())
+        normalized = placeholder.lower()
+        if placeholder and normalized not in seen:
+            seen.add(normalized)
+            placeholders.append(placeholder)
+    return placeholders
+
+
+def is_affirmative_message(text: str) -> bool:
+    normalized = text.strip().lower()
+    return normalized in {"да", "давай", "ок", "окей", "согласен", "согласна", "переходим", "да, переходим"}
+
+
+def last_assistant_message(messages: list[Message]) -> str:
+    for message in reversed(messages):
+        if message.role == MessageRole.assistant:
+            return message.content
+    return ""
+
+
+def parse_placeholder_values(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        clean_key = " ".join(key.replace("[", "").replace("]", "").split()).lower()
+        clean_value = value.strip()
+        if clean_key and clean_value:
+            values[clean_key] = clean_value
+    return values
+
+
+def fill_contract_placeholders(contract_text: str, values: dict[str, str]) -> str:
+    def replace(match: re.Match[str]) -> str:
+        placeholder = " ".join(match.group(1).split())
+        return values.get(placeholder.lower(), match.group(0))
+
+    return PLACEHOLDER_RE.sub(replace, contract_text)
+
+
+def build_placeholder_request(placeholders: list[str]) -> str:
+    lines = "\n".join(f"- {placeholder}: " for placeholder in placeholders)
+    return (
+        "Хорошо, перед согласованием нужно заполнить данные, которые пока стоят в квадратных скобках.\n\n"
+        "Пришлите их в таком формате:\n"
+        f"{lines}\n\n"
+        "Я проверю, что все обязательные поля заполнены, и внесу данные в договор."
+    )
 
 
 def is_rent_increase_question(text: str) -> bool:
@@ -940,6 +997,12 @@ async def send_message(
 
     latest_version_before_answer = get_latest_version(db, session)
     is_contract_update = payload.content.startswith(CONTRACT_UPDATE_PREFIX)
+    prior_messages = (
+        db.query(Message)
+        .filter(Message.session_id == session.id)
+        .order_by(Message.created_at.asc())
+        .all()
+    )
     is_contract_question = (
         session.status != SessionStatus.finalized
         and latest_version_before_answer is not None
@@ -950,6 +1013,39 @@ async def send_message(
         session.title = infer_session_title(title_source)
     db.add(Message(session_id=session.id, role=MessageRole.user, content=payload.content))
     db.flush()
+
+    if session.status != SessionStatus.finalized and latest_version_before_answer is not None and not is_contract_update:
+        placeholders = extract_placeholders(latest_version_before_answer.content)
+        last_assistant = last_assistant_message(prior_messages).lower()
+        if placeholders and is_affirmative_message(payload.content) and "переходим к согласованию" in last_assistant:
+            answer = build_placeholder_request(placeholders)
+            db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+            db.commit()
+            return {"content": answer, "contract_saved": False, "reasoning": ""}
+
+        if placeholders and "перед согласованием нужно заполнить данные" in last_assistant:
+            values = parse_placeholder_values(payload.content)
+            missing = [placeholder for placeholder in placeholders if placeholder.lower() not in values]
+            if missing:
+                answer = (
+                    "Пока не хватает данных для заполнения договора:\n"
+                    + "\n".join(f"- {placeholder}" for placeholder in missing)
+                    + "\n\nПришлите недостающие значения в формате: поле: значение."
+                )
+                db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+                db.commit()
+                return {"content": answer, "contract_saved": False, "reasoning": ""}
+
+            filled_contract = fill_contract_placeholders(latest_version_before_answer.content, values)
+            save_contract_version(db, session, filled_contract)
+            answer = (
+                "Данные внесены в договор успешно.\n\n"
+                "Переходим к отправке ссылки второй стороне для согласования?"
+            )
+            db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+            db.commit()
+            return {"content": answer, "contract_saved": True, "reasoning": ""}
+
     if session.status == SessionStatus.finalized:
         reasoning_note = ""
     elif latest_version_before_answer is None:
