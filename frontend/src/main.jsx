@@ -35,6 +35,17 @@ function buildReasoningNote(steps) {
   return `Что делает Арби:\n${steps.map((step) => `• ${step}`).join("\n")}`;
 }
 
+function formatSessionTimestamp(session) {
+  const timestamp = session.updated_at || session.created_at;
+  return new Date(timestamp).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function App() {
   const [email, setEmail] = useState("");
   const [authMode, setAuthMode] = useState("register");
@@ -374,7 +385,7 @@ function App() {
               }}
             >
               <span>{session.title}</span>
-              <small>{new Date(session.created_at).toLocaleDateString("ru-RU")}</small>
+              <small>{formatSessionTimestamp(session)}</small>
             </button>
           ))}
         </div>
