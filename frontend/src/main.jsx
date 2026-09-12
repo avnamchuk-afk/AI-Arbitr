@@ -318,7 +318,9 @@ function App() {
       setThinkingStep(thinkingSteps[thinkingSteps.length - 1]);
       await sleep(450);
       setThinking(false);
-      setMessages((items) => [...items, { role: "system", content: data.reasoning || buildReasoningNote(thinkingSteps) }]);
+      if (!isQuestion) {
+        setMessages((items) => [...items, { role: "system", content: data.reasoning || buildReasoningNote(thinkingSteps) }]);
+      }
       if (isInitialContract) {
         await typeAssistantMessage(data.content);
       } else {

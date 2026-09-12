@@ -509,12 +509,18 @@ def list_sessions(user: User = Depends(get_current_user), db: Session = Depends(
 def get_session(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = get_accessible_session(db, session_id, user)
     latest_version = get_latest_version(db, session)
+    messages = (
+        db.query(Message)
+        .filter(Message.session_id == session.id)
+        .order_by(Message.created_at.asc())
+        .all()
+    )
     return {
         "session": session,
         "participants": session.participants,
         "versions": session.versions,
         "latest_version": latest_version,
-        "messages": session.messages,
+        "messages": messages,
     }
 
 
@@ -857,10 +863,16 @@ async def send_message(
 
     latest_version_before_answer = get_latest_version(db, session)
     is_contract_update = payload.content.startswith(CONTRACT_UPDATE_PREFIX)
+    is_contract_question = (
+        session.status != SessionStatus.finalized
+        and latest_version_before_answer is not None
+        and not is_contract_update
+    )
     if session.title == "Новый договор":
         title_source = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
         session.title = infer_session_title(title_source)
     db.add(Message(session_id=session.id, role=MessageRole.user, content=payload.content))
+    db.flush()
     if session.status == SessionStatus.finalized:
         reasoning_note = ""
     elif latest_version_before_answer is None:
@@ -869,7 +881,7 @@ async def send_message(
         reasoning_note = build_update_reasoning_note(payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip())
     else:
         reasoning_note = build_question_reasoning_note(payload.content)
-    if reasoning_note:
+    if reasoning_note and not is_contract_question:
         db.add(Message(session_id=session.id, role=MessageRole.system, content=reasoning_note))
     db.commit()
 
