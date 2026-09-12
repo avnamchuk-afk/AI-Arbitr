@@ -274,7 +274,7 @@ function App() {
     if (!draft.trim() || !currentSession) return;
     const rawContent = draft.trim();
     const isContractUpdate = chatMode === "add";
-    const isQuestion = chatMode === "question";
+    const isQuestion = chatMode === "question" || (hasContractVersion && chatMode === "idle");
     const isInitialContract = !hasContractVersion && !isContractUpdate && !isQuestion;
     const content = isContractUpdate ? `ДОПОЛНИТЬ ДОГОВОР: ${rawContent}` : rawContent;
     const thinkingSteps = isContractUpdate

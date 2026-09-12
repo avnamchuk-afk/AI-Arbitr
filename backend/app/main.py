@@ -600,6 +600,13 @@ def format_history(messages: list[Message]) -> str:
     )
 
 
+def format_recent_dialogue(messages: list[Message], limit: int = 8) -> str:
+    relevant_messages = [message for message in messages if message.role in {MessageRole.user, MessageRole.assistant}]
+    return "\n\n".join(
+        f"{message.role.value}:\n{message.content}" for message in relevant_messages[-limit:]
+    )
+
+
 def ensure_demo_session(db: Session, user: User) -> None:
     existing = (
         db.query(ContractSession)
@@ -897,12 +904,21 @@ async def send_message(
                 ]
             else:
                 should_save_contract_version = False
+                messages_for_context = (
+                    db.query(Message)
+                    .filter(Message.session_id == session.id)
+                    .order_by(Message.created_at.asc())
+                    .all()
+                )
+                recent_dialogue = format_recent_dialogue(messages_for_context)
                 prompt = [
                     {
                         "role": "system",
                         "text": (
                             "Ты AI-Арбитр. Пользователь задает вопрос по уже подготовленному договору. "
-                            "Ответь только на вопрос пользователя. Запрещено возвращать полный текст договора, "
+                            "Ответь на последний вопрос пользователя с учетом предыдущего диалога. "
+                            "Если последний вопрос является уточнением, восстанови контекст из истории. "
+                            "Запрещено возвращать полный текст договора, "
                             "разделы договора, преамбулу, реквизиты или новую редакцию. "
                             "Сначала дай прямой ответ, затем кратко объясни почему. "
                             "Если вопрос про изменение цены, срок, расторжение, депозит или ответственность, "
@@ -914,7 +930,8 @@ async def send_message(
                     {
                         "role": "user",
                         "text": (
-                            f"Вопрос пользователя:\n{payload.content}\n\n"
+                            f"Последний вопрос пользователя:\n{payload.content}\n\n"
+                            f"Предыдущий диалог:\n{recent_dialogue}\n\n"
                             "Текущая версия договора ниже дана только как справочный материал. "
                             "Не переписывай ее и не выводи ее текст в ответе.\n\n"
                             f"{latest_version.content}"
