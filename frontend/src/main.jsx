@@ -68,6 +68,7 @@ function App() {
   const [appNotice, setAppNotice] = useState("");
   const [partyName, setPartyName] = useState("");
   const [partyEmail, setPartyEmail] = useState("");
+  const [deleteCandidateId, setDeleteCandidateId] = useState("");
   const messagesEndRef = useRef(null);
 
   const pendingInvite = getInviteTokenFromPath();
@@ -185,11 +186,13 @@ function App() {
     setSidebarOpen(false);
   }
 
+  async function confirmDeleteSession(event, session) {
+    event.stopPropagation();
+    setDeleteCandidateId(session.id);
+  }
+
   async function deleteSession(event, session) {
     event.stopPropagation();
-    const confirmed = window.confirm(`Удалить чат "${session.title}"? Это действие нельзя отменить.`);
-    if (!confirmed) return;
-
     const response = await fetch(`${API_URL}/sessions/${session.id}`, {
       method: "DELETE",
       credentials: "include",
@@ -200,6 +203,7 @@ function App() {
     }
 
     setSessions((items) => items.filter((item) => item.id !== session.id));
+    setDeleteCandidateId("");
     loadSessions();
     if (currentSession?.id === session.id) {
       setCurrentSession(null);
@@ -416,15 +420,33 @@ function App() {
                   setCurrentSession(session);
                   setInviteLink("");
                   setChangesText("");
+                  setDeleteCandidateId("");
                   setSidebarOpen(false);
                 }}
               >
                 <span>{session.title}</span>
                 <small>{formatSessionTimestamp(session)}</small>
               </button>
-              <button className="delete-session" onClick={(event) => deleteSession(event, session)} aria-label="Удалить чат">
-                <Trash2 size={16} />
-              </button>
+              {deleteCandidateId === session.id ? (
+                <div className="delete-confirm">
+                  <button className="delete-yes" onClick={(event) => deleteSession(event, session)}>
+                    Удалить
+                  </button>
+                  <button
+                    className="delete-no"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDeleteCandidateId("");
+                    }}
+                  >
+                    Отмена
+                  </button>
+                </div>
+              ) : (
+                <button className="delete-session" onClick={(event) => confirmDeleteSession(event, session)} aria-label="Удалить чат">
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
           ))}
         </div>
