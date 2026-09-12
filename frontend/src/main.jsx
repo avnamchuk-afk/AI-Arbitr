@@ -390,9 +390,12 @@ function App() {
 
   return (
     <main className="app-shell">
-      <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
-        <Menu size={20} />
-      </button>
+      <div className="mobile-topbar">
+        <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
+          <Menu size={20} />
+        </button>
+        <strong>AI-arbitr</strong>
+      </div>
       {sidebarOpen && (
         <button className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-label="Закрыть меню" />
       )}
