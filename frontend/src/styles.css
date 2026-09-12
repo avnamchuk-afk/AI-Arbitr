@@ -1,7 +1,17 @@
 :root {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #1c2430;
-  background: #f6f7f9;
+  background: #eef4f3;
+  --accent: #105f57;
+  --accent-strong: #0b4d47;
+  --ink: #17222f;
+  --muted: #5e6976;
+  --surface: rgb(255 255 255 / 68%);
+  --surface-strong: rgb(255 255 255 / 82%);
+  --surface-soft: rgb(255 255 255 / 46%);
+  --line: rgb(126 148 160 / 28%);
+  --shadow: 0 18px 54px rgb(23 34 47 / 10%);
+  --blur: blur(18px) saturate(1.25);
 }
 
 * {
@@ -10,6 +20,9 @@
 
 body {
   margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(135deg, #edf4f2 0%, #f7f5ef 48%, #eef2f7 100%);
 }
 
 button,
@@ -20,6 +33,16 @@ textarea {
 
 button {
   cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
 }
 
 .login-page {
@@ -34,14 +57,18 @@ button {
   display: grid;
   gap: 16px;
   padding: 28px;
-  background: #ffffff;
-  border: 1px solid #dfe4ea;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 8px;
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
 }
 
 .login-form h1 {
   margin: 0;
   font-size: 28px;
+  letter-spacing: 0;
+  color: var(--ink);
 }
 
 .auth-switch {
@@ -49,31 +76,43 @@ button {
   grid-template-columns: 1fr 1fr;
   gap: 4px;
   padding: 4px;
-  border: 1px solid #dfe4ea;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #f6f7f9;
+  background: rgb(255 255 255 / 34%);
 }
 
 .auth-switch button {
   border: 0;
   border-radius: 6px;
   padding: 10px;
-  color: #4e5966;
+  color: var(--muted);
   background: transparent;
 }
 
 .auth-switch button.active {
-  color: #1c2430;
-  background: #ffffff;
+  color: var(--ink);
+  background: var(--surface-strong);
   box-shadow: 0 1px 2px rgba(28, 36, 48, 0.08);
 }
 
 .login-form input,
 .composer textarea {
   width: 100%;
-  border: 1px solid #cfd7e2;
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px 14px;
+  color: var(--ink);
+  background: rgb(255 255 255 / 66%);
+  outline: none;
+}
+
+.login-form input:focus,
+.composer textarea:focus,
+.party-form input:focus,
+.contract-panel textarea:focus,
+.contract-details textarea:focus {
+  border-color: rgb(16 95 87 / 55%);
+  box-shadow: 0 0 0 3px rgb(16 95 87 / 12%);
 }
 
 .checkbox-row {
@@ -85,7 +124,7 @@ button {
 
 .notice {
   margin: 0;
-  color: #16635b;
+  color: var(--accent);
   font-size: 14px;
 }
 
@@ -93,11 +132,12 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #16635b;
+  border: 1px solid rgb(16 95 87 / 36%);
   border-radius: 8px;
   padding: 10px 12px;
-  color: #16635b;
+  color: var(--accent);
   text-decoration: none;
+  background: rgb(255 255 255 / 44%);
 }
 
 .login-form > button,
@@ -107,7 +147,9 @@ button {
   border-radius: 8px;
   padding: 12px 14px;
   color: #fff;
-  background: #16635b;
+  background: rgb(16 95 87 / 88%);
+  box-shadow: 0 10px 28px rgb(16 95 87 / 18%);
+  backdrop-filter: var(--blur);
 }
 
 .app-shell {
@@ -122,8 +164,10 @@ button {
   flex-direction: column;
   gap: 18px;
   padding: 18px;
-  background: #ffffff;
-  border-right: 1px solid #dfe4ea;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
 }
 
 .account {
@@ -133,13 +177,24 @@ button {
 
 .account button,
 .session-open {
-  border: 1px solid #dfe4ea;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #ffffff;
+  background: rgb(255 255 255 / 42%);
   padding: 10px;
   display: flex;
   align-items: center;
   gap: 8px;
+  color: var(--ink);
+}
+
+.account button:hover,
+.session-open:hover,
+.delete-session:hover,
+.panel-actions button:hover,
+.copy-link:hover,
+.download-button:hover {
+  border-color: rgb(16 95 87 / 32%);
+  background: rgb(255 255 255 / 72%);
 }
 
 .empty-state button,
@@ -169,7 +224,7 @@ button {
 }
 
 .session-list small {
-  color: #6c7581;
+  color: var(--muted);
 }
 
 .delete-session {
@@ -178,10 +233,10 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #dfe4ea;
+  border: 1px solid var(--line);
   border-radius: 8px;
   color: #8b3a3a;
-  background: #ffffff;
+  background: rgb(255 255 255 / 42%);
 }
 
 .delete-confirm {
@@ -192,21 +247,21 @@ button {
 
 .delete-confirm button {
   min-height: 28px;
-  border: 1px solid #dfe4ea;
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 4px 8px;
   font-size: 12px;
-  background: #ffffff;
+  background: rgb(255 255 255 / 58%);
 }
 
 .delete-confirm .delete-yes {
   color: #ffffff;
   border-color: #8b3a3a;
-  background: #8b3a3a;
+  background: rgb(139 58 58 / 88%);
 }
 
 .delete-confirm .delete-no {
-  color: #4e5966;
+  color: var(--muted);
 }
 
 .sidebar-footer {
@@ -222,7 +277,7 @@ button {
   display: flex;
   flex-direction: column;
   padding: 24px 24px 18px;
-  background: #f6f7f9;
+  background: transparent;
 }
 
 .chat-thread {
@@ -265,11 +320,12 @@ button {
 
 .app-notice {
   margin-bottom: 12px;
-  border: 1px solid #9fc6bd;
+  border: 1px solid rgb(16 95 87 / 26%);
   border-radius: 8px;
   padding: 10px 12px;
-  color: #14514b;
-  background: #e8f5f2;
+  color: var(--accent-strong);
+  background: rgb(232 245 242 / 62%);
+  backdrop-filter: var(--blur);
 }
 
 .empty-state {
@@ -284,13 +340,14 @@ button {
 .empty-state h2 {
   margin: 0;
   font-size: 34px;
-  font-weight: 700;
+  font-weight: 760;
   line-height: 1.1;
+  color: var(--ink);
 }
 
 .empty-state p {
   margin: 0;
-  color: #4e5966;
+  color: var(--muted);
   line-height: 1.55;
   font-size: 16px;
 }
@@ -310,9 +367,11 @@ button {
   flex-direction: column;
   gap: 10px;
   padding: 14px;
-  background: #ffffff;
-  border: 1px solid #dfe4ea;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 8px;
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
 }
 
 .panel-header {
@@ -323,14 +382,14 @@ button {
 }
 
 .panel-header span {
-  color: #6c7581;
+  color: var(--muted);
   font-size: 13px;
 }
 
 .panel-help,
 .panel-hint {
   margin: 0;
-  color: #5a6572;
+  color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -339,9 +398,10 @@ button {
   width: 100%;
   min-height: 220px;
   resize: vertical;
-  border: 1px solid #cfd7e2;
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px;
+  background: rgb(255 255 255 / 62%);
 }
 
 .contract-panel textarea.changes {
@@ -359,10 +419,10 @@ button {
 .copy-link,
 .download-button {
   min-height: 40px;
-  border: 1px solid #cfd7e2;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #ffffff;
-  color: #1c2430;
+  background: rgb(255 255 255 / 48%);
+  color: var(--ink);
 }
 
 .panel-actions button,
@@ -374,8 +434,8 @@ button {
 }
 
 .download-button {
-  border-color: #16635b;
-  color: #16635b;
+  border-color: rgb(16 95 87 / 36%);
+  color: var(--accent);
 }
 
 .copy-link {
@@ -390,7 +450,7 @@ button {
 .approvals {
   display: grid;
   gap: 4px;
-  color: #4e5966;
+  color: var(--muted);
   font-size: 13px;
 }
 
@@ -404,27 +464,32 @@ button {
   line-height: 1.55;
   padding: 14px 16px;
   border-radius: 8px;
+  box-shadow: 0 10px 28px rgb(23 34 47 / 6%);
 }
 
 .message.user {
   align-self: flex-end;
-  background: #dff2ee;
+  background: rgb(206 235 229 / 72%);
+  border: 1px solid rgb(16 95 87 / 18%);
+  backdrop-filter: var(--blur);
 }
 
 .message.assistant {
   align-self: flex-start;
-  background: #ffffff;
-  border: 1px solid #dfe4ea;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  backdrop-filter: var(--blur);
 }
 
 .message.system {
   align-self: flex-start;
   max-width: min(720px, 92%);
-  color: #5a6572;
-  background: transparent;
-  border: 1px dashed #cfd7e2;
+  color: var(--muted);
+  background: rgb(255 255 255 / 34%);
+  border: 1px dashed rgb(126 148 160 / 40%);
   font-size: 12px;
   line-height: 1.45;
+  backdrop-filter: var(--blur);
 }
 
 .message.system em {
@@ -441,7 +506,7 @@ button {
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: #16635b;
+  background: var(--accent);
   animation: pulse 900ms ease-in-out infinite;
 }
 
@@ -463,14 +528,16 @@ button {
   display: grid;
   gap: 12px;
   padding: 16px;
-  background: #ffffff;
-  border: 1px solid #bdd8d1;
+  background: var(--surface);
+  border: 1px solid rgb(16 95 87 / 24%);
   border-radius: 8px;
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
 }
 
 .next-step p {
   margin: 6px 0 0;
-  color: #4e5966;
+  color: var(--muted);
   line-height: 1.5;
 }
 
@@ -482,9 +549,10 @@ button {
 
 .party-form input {
   min-width: 0;
-  border: 1px solid #cfd7e2;
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
+  background: rgb(255 255 255 / 62%);
 }
 
 .party-form button {
@@ -493,7 +561,7 @@ button {
   border-radius: 8px;
   padding: 11px 14px;
   color: #ffffff;
-  background: #16635b;
+  background: rgb(16 95 87 / 88%);
 }
 
 .contract-details {
@@ -503,16 +571,17 @@ button {
 
 .contract-details summary {
   cursor: pointer;
-  color: #16635b;
+  color: var(--accent);
 }
 
 .contract-details textarea {
   width: 100%;
   min-height: 260px;
-  border: 1px solid #cfd7e2;
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px;
   resize: vertical;
+  background: rgb(255 255 255 / 62%);
 }
 
 .composer {
@@ -522,7 +591,7 @@ button {
   align-items: flex-end;
   gap: 10px;
   padding-top: 10px;
-  border-top: 1px solid #e4e8ee;
+  border-top: 1px solid rgb(126 148 160 / 22%);
 }
 
 .composer textarea {
@@ -540,8 +609,9 @@ button {
   border: 0;
   border-radius: 8px;
   color: #fff;
-  background: #16635b;
+  background: rgb(16 95 87 / 88%);
   flex: 0 0 48px;
+  box-shadow: 0 10px 28px rgb(16 95 87 / 18%);
 }
 
 .hint {
@@ -549,7 +619,7 @@ button {
   margin-left: auto;
   margin-right: auto;
   margin-top: 8px;
-  color: #6c7581;
+  color: var(--muted);
 }
 
 .mobile-topbar {
@@ -574,8 +644,16 @@ button {
     align-items: center;
     gap: 12px;
     padding: 8px 14px;
-    background: #f6f7f9;
-    border-bottom: 1px solid #dfe4ea;
+    background: rgb(238 244 243 / 78%);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 12px 34px rgb(23 34 47 / 8%);
+    backdrop-filter: var(--blur);
+  }
+
+  .mobile-topbar strong {
+    color: var(--ink);
+    font-weight: 760;
+    letter-spacing: 0;
   }
 
   .mobile-menu {
@@ -593,7 +671,8 @@ button {
     display: block;
     border: 0;
     padding: 0;
-    background: rgb(28 36 48 / 28%);
+    background: rgb(23 34 47 / 30%);
+    backdrop-filter: blur(4px);
   }
 
   .sidebar {
