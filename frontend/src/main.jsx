@@ -74,6 +74,10 @@ function App() {
   const [deleteCandidateId, setDeleteCandidateId] = useState("");
   const [chatMode, setChatMode] = useState("idle");
   const [questionResolved, setQuestionResolved] = useState(false);
+  const [authPromptTitle, setAuthPromptTitle] = useState("Сохранить историю");
+  const [authPromptCopy, setAuthPromptCopy] = useState(
+    "Укажите email, чтобы сохранить этот договор, получить ссылку для входа и отправить договор второй стороне."
+  );
   const messagesEndRef = useRef(null);
 
   const pendingInvite = getInviteTokenFromPath();
@@ -118,9 +122,23 @@ function App() {
     if (!authed) return;
     const token = localStorage.getItem("ai-arbitr-pending-invite");
     if (!token) return;
+    if (isGuest) {
+      setAuthMode("register");
+      setAuthPromptTitle("Войти как вторая сторона");
+      setAuthPromptCopy(
+        "Чтобы присоединиться к согласованию, укажите email второй стороны. Так мы отделим вашу учетку от стороны 1 и сохраним историю согласования."
+      );
+      setLoginNotice("Ссылка открыта. Войдите или зарегистрируйтесь как вторая сторона договора.");
+      setAuthPromptOpen(true);
+      return;
+    }
     fetch(`${API_URL}/invites/${token}/accept`, { method: "POST", credentials: "include" })
       .then((res) => {
-        if (!res.ok) throw new Error("invite failed");
+        if (!res.ok) {
+          return res.json().catch(() => ({})).then((error) => {
+            throw error;
+          });
+        }
         return res.json();
       })
       .then((data) => {
@@ -128,8 +146,31 @@ function App() {
         loadSession(data.session_id);
         window.history.replaceState({}, "", "/");
       })
-      .catch(() => setLoginNotice("Приглашение недействительно или уже принято другой стороной"));
-  }, [authed]);
+      .catch((error) => {
+        if (error?.detail === "Сторона 1 уже привязана к договору") {
+          fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" })
+            .then(() => fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" }))
+            .then((res) => res.json())
+            .then((user) => {
+              setEmail(user.email || "");
+              setUserId(user.id);
+              setIsGuest(true);
+              setAuthed(true);
+              setCurrentSession(null);
+              setSessions([]);
+              setAuthMode("register");
+              setAuthPromptTitle("Войти как вторая сторона");
+              setAuthPromptCopy(
+                "Эта ссылка предназначена для второй стороны договора. Укажите email второй стороны, чтобы присоединиться к отдельной учетке согласования."
+              );
+              setLoginNotice("Вы были стороной 1. Для согласования войдите как сторона 2.");
+              setAuthPromptOpen(true);
+            });
+          return;
+        }
+        setLoginNotice(error?.detail || "Приглашение недействительно или уже принято другой стороной");
+      });
+  }, [authed, isGuest]);
 
   useEffect(() => {
     if (!currentSession) return;
@@ -320,6 +361,8 @@ function App() {
   async function createInvite() {
     if (isGuest) {
       setAuthMode("register");
+      setAuthPromptTitle("Сохранить историю");
+      setAuthPromptCopy("Укажите email, чтобы сохранить этот договор, получить ссылку для входа и отправить договор второй стороне.");
       setAuthPromptOpen(true);
       setLoginNotice("Укажите email, чтобы сохранить сессию и отправить ссылку второй стороне.");
       return;
@@ -474,10 +517,8 @@ function App() {
       {authPromptOpen && (
         <div className="auth-modal-backdrop">
           <form className="login-form auth-modal" onSubmit={login}>
-            <h1>Сохранить историю</h1>
-            <p className="auth-copy">
-              Укажите email, чтобы сохранить этот договор, получить ссылку для входа и отправить договор второй стороне.
-            </p>
+            <h1>{authPromptTitle}</h1>
+            <p className="auth-copy">{authPromptCopy}</p>
             <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="email@example.com" />
             <label className="checkbox-row">
               <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
