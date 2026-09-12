@@ -62,6 +62,54 @@ class ChangesRequest(BaseModel):
     content: str
 
 
+DEMO_SESSION_TITLE = "Пример: договор на лендинг"
+DEMO_USER_PROMPT = (
+    "Сгенерируй простой договор оказания услуг: исполнитель делает лендинг, "
+    "заказчик платит 50 000 рублей, срок 10 рабочих дней."
+)
+DEMO_CONTRACT_TEXT = """### Договор оказания услуг
+
+**1. Преамбула**
+[Сторона 1], именуемая далее "Заказчик", и [Сторона 2], именуемая далее "Исполнитель",
+заключили настоящий договор о нижеследующем.
+
+**2. Предмет договора**
+Исполнитель обязуется оказать услуги по созданию лендинга для Заказчика, а Заказчик
+обязуется принять результат услуг и оплатить его.
+
+**3. Стоимость и порядок расчетов**
+Стоимость услуг составляет 50 000 рублей. Оплата производится в безналичном порядке
+на расчетный счет Исполнителя в сроки, согласованные сторонами.
+
+**4. Срок оказания услуг**
+Исполнитель обязуется подготовить лендинг в течение 10 рабочих дней с даты согласования
+технического задания и получения необходимых материалов от Заказчика.
+
+**5. Права и обязанности сторон**
+Исполнитель обязуется выполнить услуги добросовестно и передать результат Заказчику.
+Заказчик обязуется предоставить необходимые материалы, рассмотреть результат и направить
+мотивированные замечания либо подтвердить приемку.
+
+**6. Ответственность сторон**
+Стороны несут ответственность за нарушение обязательств в соответствии с законодательством
+Российской Федерации и условиями настоящего договора.
+
+**7. Порядок разрешения споров**
+Стороны согласовали, что при возникновении разногласий они вправе обратиться к AI-Арбитру
+для получения экспертного заключения по существу спора. AI-Арбитр анализирует текст договора
+и историю согласования, после чего формирует рекомендации.
+
+AI-Арбитр не является третейским судом, арбитражным учреждением или органом государственной
+власти. Заключение AI-Арбитра носит рекомендательный характер и не ограничивает право любой
+из сторон обратиться в компетентный суд за защитой своих интересов.
+
+**8. Реквизиты и подписи сторон**
+Заказчик: [реквизиты]
+
+Исполнитель: [реквизиты]
+"""
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -136,6 +184,7 @@ def verify_magic_link(token: str, db: Session = Depends(get_db)):
 
     user.last_login_at = now_utc()
     auth_token.used = True
+    ensure_demo_session(db, user)
     db.commit()
 
     response = RedirectResponse(f"{settings.app_base_url}/?login=success", status_code=303)
@@ -173,6 +222,8 @@ def create_session(user: User = Depends(get_current_user), db: Session = Depends
 
 @app.get("/sessions")
 def list_sessions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ensure_demo_session(db, user)
+    db.commit()
     return (
         db.query(ContractSession)
         .join(ContractParticipant, ContractParticipant.session_id == ContractSession.id)
@@ -259,6 +310,35 @@ def count_completed_today(db: Session, user: User) -> int:
 def format_history(messages: list[Message]) -> str:
     return "\n\n".join(
         f"{message.created_at.isoformat()} / {message.role.value}:\n{message.content}" for message in messages
+    )
+
+
+def ensure_demo_session(db: Session, user: User) -> None:
+    existing = (
+        db.query(ContractSession)
+        .filter(ContractSession.owner_user_id == user.id, ContractSession.title == DEMO_SESSION_TITLE)
+        .one_or_none()
+    )
+    if existing is not None:
+        return
+
+    session = ContractSession(
+        owner_user_id=user.id,
+        title=DEMO_SESSION_TITLE,
+        status=SessionStatus.in_review,
+    )
+    db.add(session)
+    db.flush()
+    db.add(ContractParticipant(session_id=session.id, user_id=user.id, role=ParticipantRole.party_1))
+    db.add(ContractParticipant(session_id=session.id, role=ParticipantRole.party_2))
+    db.add(Message(session_id=session.id, role=MessageRole.user, content=DEMO_USER_PROMPT))
+    db.add(Message(session_id=session.id, role=MessageRole.assistant, content=DEMO_CONTRACT_TEXT))
+    db.add(
+        ContractVersion(
+            session_id=session.id,
+            version_number=1,
+            content=DEMO_CONTRACT_TEXT,
+        )
     )
 
 
