@@ -393,6 +393,9 @@ function App() {
       <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
         <Menu size={20} />
       </button>
+      {sidebarOpen && (
+        <button className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-label="Закрыть меню" />
+      )}
       <aside className={sidebarOpen ? "sidebar open" : "sidebar"}>
         <div className="account">
           <strong>{email}</strong>

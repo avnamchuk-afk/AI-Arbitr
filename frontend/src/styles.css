@@ -560,9 +560,23 @@ button {
   z-index: 4;
 }
 
+.sidebar-backdrop {
+  display: none;
+}
+
 @media (max-width: 767px) {
   .mobile-menu {
     display: grid;
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    display: block;
+    border: 0;
+    padding: 0;
+    background: rgb(28 36 48 / 28%);
   }
 
   .sidebar {
