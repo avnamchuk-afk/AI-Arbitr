@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Check, Copy, Download, LogOut, Menu, Plus, Send } from "lucide-react";
+import { Check, Copy, Download, LogOut, Menu, Plus, Send, Trash2 } from "lucide-react";
 import "./styles.css";
 
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
@@ -183,6 +183,32 @@ function App() {
     setSessions([session, ...sessions]);
     setMessages([]);
     setSidebarOpen(false);
+  }
+
+  async function deleteSession(event, session) {
+    event.stopPropagation();
+    const confirmed = window.confirm(`Удалить чат "${session.title}"? Это действие нельзя отменить.`);
+    if (!confirmed) return;
+
+    const response = await fetch(`${API_URL}/sessions/${session.id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (!response.ok) {
+      setAppNotice("Не удалось удалить договор. Попробуйте еще раз.");
+      return;
+    }
+
+    setSessions((items) => items.filter((item) => item.id !== session.id));
+    if (currentSession?.id === session.id) {
+      setCurrentSession(null);
+      setSessionDetail(null);
+      setMessages([]);
+      setContractText("");
+      setInviteLink("");
+      setChangesText("");
+      setAppNotice("");
+    }
   }
 
   async function sendMessage() {
@@ -382,18 +408,23 @@ function App() {
         </button>
         <div className="session-list">
           {sessions.map((session) => (
-            <button
-              key={session.id}
-              onClick={() => {
-                setCurrentSession(session);
-                setInviteLink("");
-                setChangesText("");
-                setSidebarOpen(false);
-              }}
-            >
-              <span>{session.title}</span>
-              <small>{formatSessionTimestamp(session)}</small>
-            </button>
+            <div key={session.id} className="session-item">
+              <button
+                className="session-open"
+                onClick={() => {
+                  setCurrentSession(session);
+                  setInviteLink("");
+                  setChangesText("");
+                  setSidebarOpen(false);
+                }}
+              >
+                <span>{session.title}</span>
+                <small>{formatSessionTimestamp(session)}</small>
+              </button>
+              <button className="delete-session" onClick={(event) => deleteSession(event, session)} aria-label="Удалить чат">
+                <Trash2 size={16} />
+              </button>
+            </div>
           ))}
         </div>
         <div className="sidebar-footer">

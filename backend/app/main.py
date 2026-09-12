@@ -340,6 +340,22 @@ def get_session(session_id: str, user: User = Depends(get_current_user), db: Ses
     }
 
 
+@app.delete("/sessions/{session_id}")
+def delete_session(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    session = db.get(ContractSession, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Сессия не найдена")
+    if session.owner_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Удалить договор может только его создатель")
+
+    db.query(Message).filter(Message.session_id == session.id).delete(synchronize_session=False)
+    db.query(ContractVersion).filter(ContractVersion.session_id == session.id).delete(synchronize_session=False)
+    db.query(ContractParticipant).filter(ContractParticipant.session_id == session.id).delete(synchronize_session=False)
+    db.delete(session)
+    db.commit()
+    return {"message": "deleted"}
+
+
 def get_accessible_session(db: Session, session_id: str, user: User) -> ContractSession:
     session = db.get(ContractSession, session_id)
     if session is None:

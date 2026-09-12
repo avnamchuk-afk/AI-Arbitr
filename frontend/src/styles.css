@@ -132,7 +132,7 @@ button {
 }
 
 .account button,
-.session-list button {
+.session-open {
   border: 1px solid #dfe4ea;
   border-radius: 8px;
   background: #ffffff;
@@ -156,13 +156,32 @@ button {
   overflow: auto;
 }
 
-.session-list button {
+.session-item {
+  display: grid;
+  grid-template-columns: 1fr 40px;
+  gap: 6px;
+}
+
+.session-open {
   display: grid;
   text-align: left;
+  min-width: 0;
 }
 
 .session-list small {
   color: #6c7581;
+}
+
+.delete-session {
+  width: 40px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  color: #8b3a3a;
+  background: #ffffff;
 }
 
 .sidebar-footer {
