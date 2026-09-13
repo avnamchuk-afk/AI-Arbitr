@@ -88,6 +88,7 @@ function App() {
   const [authReady, setAuthReady] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -687,6 +688,42 @@ function App() {
           </form>
         </div>
       )}
+      {helpOpen && (
+        <div className="auth-modal-backdrop">
+          <section className="help-modal">
+            <h1>Что умеет MVP</h1>
+            <p>
+              MVP убедительно отрабатывает типовой сценарий договора найма жилого помещения:
+              подготовка проекта, вопросы по условиям, добавление положений, отправка второй стороне,
+              подписание двумя сторонами, финальный PDF и открытие спора.
+            </p>
+            <h2>Основной сценарий</h2>
+            <ul>
+              <li>Составьте договор найма жилого помещения.</li>
+              <li>Проверьте карточку ключевых условий и текст договора.</li>
+              <li>Задайте вопросы Арби или добавьте новое условие.</li>
+              <li>Отправьте ссылку второй стороне на email.</li>
+              <li>Вторая сторона подписывает договор по ссылке.</li>
+              <li>Первая сторона подписывает договор в своем чате.</li>
+              <li>Формируется PDF с отметками простой электронной подписи.</li>
+            </ul>
+            <h2>Другие договоры</h2>
+            <p>
+              Договоры подряда, услуг, разработки сайта и похожие документы генерируются
+              по упрощенному промту. Это рабочий черновик для обсуждения, а не такой же
+              глубоко проработанный сценарий, как найм жилого помещения.
+            </p>
+            <h2>После подписания</h2>
+            <p>
+              Подписанные договоры попадают в архив и защищены от удаления. В чате остаются
+              действия «Открыть спор» и «Договор исполнен».
+            </p>
+            <button className="modal-secondary" type="button" onClick={() => setHelpOpen(false)}>
+              Закрыть
+            </button>
+          </section>
+        </div>
+      )}
       <aside className={sidebarOpen ? "sidebar open" : "sidebar"}>
         <div className="account">
           <strong>{isGuest ? "Гостевой режим" : email}</strong>
@@ -789,7 +826,7 @@ function App() {
           ))}
         </div>
         <div className="sidebar-footer">
-          <a>Помощь / FAQ</a>
+          <button onClick={() => setHelpOpen(true)}>Помощь / FAQ</button>
           <a>Обратная связь</a>
         </div>
       </aside>

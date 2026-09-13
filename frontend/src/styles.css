@@ -346,6 +346,47 @@ button:hover {
   width: min(420px, 100%);
 }
 
+.help-modal {
+  width: min(560px, 100%);
+  max-height: min(760px, 88vh);
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+  color: var(--ink);
+  background: rgb(255 255 255 / 86%);
+  box-shadow: var(--shadow);
+}
+
+.help-modal h1,
+.help-modal h2,
+.help-modal p,
+.help-modal ul {
+  margin: 0;
+}
+
+.help-modal h1 {
+  font-size: 22px;
+}
+
+.help-modal h2 {
+  margin-top: 4px;
+  font-size: 15px;
+}
+
+.help-modal p,
+.help-modal li {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.help-modal ul {
+  padding-left: 18px;
+}
+
 .modal-secondary {
   border: 1px solid var(--line);
   color: var(--muted);
@@ -524,6 +565,15 @@ button:hover {
   display: grid;
   gap: 8px;
   font-size: 14px;
+}
+
+.sidebar-footer button {
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
 }
 
 .chat-area {

@@ -31,7 +31,7 @@ from app.services.contract_templates import build_housing_rent_contract
 from app.services.email import send_contract_invite, send_contract_signed_notice, send_magic_link, smtp_is_configured
 from app.services.pdf import build_contract_pdf
 from app.services.privacy import contains_passport_like_data
-from app.services.prompts import CONTRACT_SYSTEM_PROMPT, build_dispute_prompt
+from app.services.prompts import CONTRACT_SYSTEM_PROMPT, SIMPLE_CONTRACT_SYSTEM_PROMPT, build_dispute_prompt
 from app.services.yandex_gpt import YandexGPTError, ask_yandex_gpt
 
 Base.metadata.create_all(bind=engine)
@@ -1348,12 +1348,13 @@ async def send_message(
                 used_fixed_template = True
             else:
                 prompt = [
-                    {"role": "system", "text": CONTRACT_SYSTEM_PROMPT},
+                    {"role": "system", "text": SIMPLE_CONTRACT_SYSTEM_PROMPT},
                     {
                         "role": "user",
                         "text": (
-                            "Сгенерируй полный проект договора по следующему запросу. "
-                            "Ответ должен быть именно текстом договора, без предварительных пояснений.\n\n"
+                            "Сгенерируй упрощенный проект договора по следующему запросу. "
+                            "Ответ должен быть только текстом договора, без предварительных пояснений. "
+                            "Сделай договор достаточно полным для MVP, но не чрезмерно длинным.\n\n"
                             f"Запрос пользователя:\n{payload.content}"
                         ),
                     },
