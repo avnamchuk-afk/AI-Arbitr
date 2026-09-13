@@ -26,8 +26,10 @@ import {
 import "./styles.css";
 
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
-const TYPEWRITER_DELAY_MS = 17;
-const TYPEWRITER_CHUNK_SIZE = 2;
+const TYPEWRITER_DELAY_MS = 10;
+const TYPEWRITER_CHUNK_SIZE = 4;
+const MIN_INITIAL_THINKING_MS = 3200;
+const MIN_REGULAR_THINKING_MS = 1500;
 const DEMO_REVIEW_FULL_NAME = "Иванов Иван Иванович";
 const DEMO_REVIEW_PASSPORT = "1111 111111";
 
@@ -664,6 +666,7 @@ function App() {
     setThinkingStep(thinkingSteps[0]);
     setThinkingProgress(8);
     let thinkingTimer;
+    const thinkingStartedAt = Date.now();
     try {
       let stepIndex = 1;
       thinkingTimer = window.setInterval(() => {
@@ -689,6 +692,11 @@ function App() {
         throw new Error(data.detail || "Не удалось получить ответ. Попробуйте отправить запрос еще раз.");
       }
       if (thinkingTimer) window.clearInterval(thinkingTimer);
+      const minThinkingMs = isInitialContract ? MIN_INITIAL_THINKING_MS : MIN_REGULAR_THINKING_MS;
+      const remainingThinkingMs = minThinkingMs - (Date.now() - thinkingStartedAt);
+      if (remainingThinkingMs > 0) {
+        await sleep(remainingThinkingMs);
+      }
       setThinkingStep(thinkingSteps[thinkingSteps.length - 1]);
       setThinkingProgress(100);
       await sleep(450);
