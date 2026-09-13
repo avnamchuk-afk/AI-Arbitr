@@ -1,9 +1,12 @@
 import uuid
 import re
+import ipaddress
+import json
 from io import BytesIO
 from datetime import datetime, time, timezone
+from urllib.request import urlopen
 
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
@@ -26,7 +29,15 @@ from app.models.entities import (
     User,
     now_utc,
 )
-from app.services.auth import generate_raw_token, hash_token, make_session_cookie, read_session_cookie, token_expires_at
+from app.services.auth import (
+    generate_raw_token,
+    hash_token,
+    make_session_cookie,
+    make_verified_ip_cookie,
+    read_session_cookie,
+    read_verified_ip_cookie,
+    token_expires_at,
+)
 from app.services.contract_templates import AI_ARBITR_DISPUTE_SECTION, build_housing_rent_contract, build_website_development_contract
 from app.services.email import send_contract_invite, send_contract_signed_notice, send_magic_link, smtp_is_configured
 from app.services.pdf import build_contract_pdf
@@ -96,6 +107,8 @@ class ReviewApproveRequest(BaseModel):
 
 
 GUEST_EMAIL_SUFFIX = "@guest.ai-arbitr.local"
+VERIFIED_IP_COOKIE_NAME = "ai_arbitr_verified_ip"
+VPN_CHECK_CACHE: dict[str, tuple[datetime, bool]] = {}
 DEMO_SESSION_TITLE = "пример"
 LEGACY_DEMO_SESSION_TITLE = "Пример: договор на лендинг"
 DEMO_USER_PROMPT = "Составь договор найма"
@@ -960,6 +973,81 @@ def clear_auth_cookie(response: Response) -> None:
     )
 
 
+def set_verified_ip_cookie(response: Response, user: User, ip_address: str) -> None:
+    if not ip_address:
+        return
+    use_secure_cookie = settings.app_base_url.startswith("https://")
+    response.set_cookie(
+        VERIFIED_IP_COOKIE_NAME,
+        make_verified_ip_cookie(str(user.id), ip_address),
+        max_age=60 * 60 * 24 * 14,
+        httponly=True,
+        secure=use_secure_cookie,
+        samesite="lax",
+    )
+
+
+def clear_verified_ip_cookie(response: Response) -> None:
+    use_secure_cookie = settings.app_base_url.startswith("https://")
+    response.delete_cookie(
+        VERIFIED_IP_COOKIE_NAME,
+        secure=use_secure_cookie,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+def get_client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip()
+    real_ip = request.headers.get("x-real-ip", "")
+    if real_ip:
+        return real_ip.strip()
+    return request.client.host if request.client else ""
+
+
+def is_public_ip(ip_address: str) -> bool:
+    try:
+        parsed_ip = ipaddress.ip_address(ip_address)
+    except ValueError:
+        return False
+    return not (
+        parsed_ip.is_private
+        or parsed_ip.is_loopback
+        or parsed_ip.is_link_local
+        or parsed_ip.is_multicast
+        or parsed_ip.is_reserved
+        or parsed_ip.is_unspecified
+    )
+
+
+def looks_like_vpn_or_hosting_ip(ip_address: str) -> bool:
+    if not is_public_ip(ip_address):
+        return False
+
+    cached = VPN_CHECK_CACHE.get(ip_address)
+    if cached and (now_utc() - cached[0]).total_seconds() < 60 * 60:
+        return cached[1]
+
+    suspicious = False
+    try:
+        fields = "status,message,proxy,hosting,query"
+        with urlopen(f"http://ip-api.com/json/{ip_address}?fields={fields}", timeout=1.5) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        suspicious = data.get("status") == "success" and bool(data.get("proxy") or data.get("hosting"))
+    except Exception:
+        suspicious = False
+
+    VPN_CHECK_CACHE[ip_address] = (now_utc(), suspicious)
+    return suspicious
+
+
+def verified_ip_matches(cookie_value: str | None, user: User, ip_address: str) -> bool:
+    data = read_verified_ip_cookie(cookie_value)
+    return bool(data and data["user_id"] == str(user.id) and data["ip"] == ip_address)
+
+
 def get_current_user(
     db: Session = Depends(get_db),
     session_cookie: str | None = Cookie(default=None, alias=settings.session_cookie_name),
@@ -1093,7 +1181,7 @@ def request_magic_link(payload: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/auth/verify")
-def verify_magic_link(token: str, db: Session = Depends(get_db)):
+def verify_magic_link(token: str, request: Request, db: Session = Depends(get_db)):
     token_hash = hash_token(token)
     auth_token = db.query(AuthToken).filter(AuthToken.token_hash == token_hash).one_or_none()
     if auth_token is None or auth_token.used or auth_token.expires_at < datetime.now(timezone.utc):
@@ -1113,21 +1201,37 @@ def verify_magic_link(token: str, db: Session = Depends(get_db)):
 
     response = RedirectResponse(f"{settings.app_base_url}/?login=success", status_code=303)
     set_auth_cookie(response, user)
+    set_verified_ip_cookie(response, user, get_client_ip(request))
     return response
 
 
 @app.get("/auth/me")
 def auth_me(
+    request: Request,
     response: Response,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    verified_ip_cookie: str | None = Cookie(default=None, alias=VERIFIED_IP_COOKIE_NAME),
 ):
     if not is_guest_user(user):
+        client_ip = get_client_ip(request)
+        if looks_like_vpn_or_hosting_ip(client_ip) and not verified_ip_matches(verified_ip_cookie, user, client_ip):
+            clear_auth_cookie(response)
+            clear_verified_ip_cookie(response)
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "magic_link_required",
+                    "email": user.email,
+                    "message": "Вход из новой или защищенной сети. Подтвердите email по ссылке из письма.",
+                },
+            )
         user.trusted_login_count = (user.trusted_login_count or 0) + 1
         if user.trusted_login_count >= 10:
             user.trusted_login_count = 0
             db.commit()
             clear_auth_cookie(response)
+            clear_verified_ip_cookie(response)
             raise HTTPException(
                 status_code=401,
                 detail={
@@ -1143,6 +1247,7 @@ def auth_me(
 @app.post("/auth/logout")
 def logout(response: Response):
     clear_auth_cookie(response)
+    clear_verified_ip_cookie(response)
     return {"message": "ok"}
 
 
