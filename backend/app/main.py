@@ -446,7 +446,7 @@ def build_object_summary(contract_text: str) -> str:
         object_type = "квартира"
     elif "комнат" in normalized:
         object_type = "комната"
-    elif "жилой дом" in normalized or "дом" in normalized:
+    elif "жилой дом" in normalized or re.search(r"\bдом\b", normalized):
         object_type = "жилой дом"
     else:
         object_type = "жилое помещение"
@@ -485,7 +485,9 @@ def build_key_terms(contract_text: str) -> list[dict[str, str]]:
     else:
         pets_value = "не указано"
 
-    deposit_sentence = find_sentence(contract_text, ("обеспечительный", "платеж"))
+    deposit_sentence = find_sentence(contract_text, ("вносит", "обеспечительный", "платеж"))
+    if deposit_sentence == "не указано":
+        deposit_sentence = find_sentence(contract_text, ("депозит", "размер"))
     deposit_value = extract_money_or_placeholder(deposit_sentence, ("сумма обеспечительного платежа",))
     if deposit_value != "не указано":
         deposit_value = f"в размере {deposit_value}"
