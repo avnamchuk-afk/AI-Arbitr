@@ -781,6 +781,28 @@ def build_rule_based_contract_norm(dialogue: str) -> str | None:
     return None
 
 
+def is_deposit_split_question(text: str) -> bool:
+    normalized = text.lower().replace("ё", "е")
+    deposit_markers = ("депозит", "обеспечительный")
+    split_markers = ("два", "2 ", "двум", "две", "платеж", "рассроч", "част")
+    return any(marker in normalized for marker in deposit_markers) and any(marker in normalized for marker in split_markers)
+
+
+def build_deposit_split_answer(contract_text: str) -> str:
+    has_split = "двумя равными платежами" in contract_text.lower().replace("ё", "е")
+    if has_split:
+        return (
+            "Да, в этой редакции уже предусмотрена рассрочка обеспечительного платежа на два платежа. "
+            "Проверьте только срок внесения второй части и последствия просрочки.\n\n"
+            "Хотите уточнить это условие в договоре?"
+        )
+    return (
+        "Да, обеспечительный платеж можно разбить на два платежа, если стороны прямо согласуют это в договоре. "
+        "Такое условие лучше прописать отдельно: размер первой части, срок внесения второй части и последствия просрочки.\n\n"
+        "Хотите включить это условие в договор?"
+    )
+
+
 async def propose_contract_norm(contract_text: str, last_answer: str, dialogue: str) -> str:
     rule_based = build_rule_based_contract_norm(dialogue)
     if rule_based:
@@ -1446,11 +1468,12 @@ async def send_message(
         db.commit()
         return {"content": answer, "contract_saved": False, "reasoning": ""}
 
+    recent_messages_text = "\n".join(message.content for message in prior_messages[-8:])
     if (
         latest_version_before_answer is not None
         and not is_contract_update
         and is_affirmative_message(payload.content)
-        and "хотите включить" in last_assistant_message(prior_messages).lower()
+        and ("хотите включить" in recent_messages_text.lower() or build_rule_based_contract_norm(recent_messages_text))
     ):
         recent_dialogue = format_recent_dialogue(prior_messages)
         last_assistant = last_assistant_message(prior_messages)
@@ -1464,6 +1487,12 @@ async def send_message(
                 "и последствий нарушения.\n\n"
                 "Добавить это условие в договор?"
             )
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {"content": answer, "contract_saved": False, "reasoning": ""}
+
+    if latest_version_before_answer is not None and not is_contract_update and is_deposit_split_question(payload.content):
+        answer = build_deposit_split_answer(latest_version_before_answer.content)
         db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
         db.commit()
         return {"content": answer, "contract_saved": False, "reasoning": ""}
