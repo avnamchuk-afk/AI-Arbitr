@@ -1,6 +1,28 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Check, ChevronDown, ChevronRight, Copy, Download, LogOut, Menu, Plus, Search, Send, Trash2 } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  Building2,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Download,
+  FileText,
+  Globe2,
+  Hammer,
+  HardHat,
+  Home,
+  LogOut,
+  Menu,
+  Plus,
+  Scale,
+  Search,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import "./styles.css";
 
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
@@ -216,6 +238,27 @@ function getSessionStatusLabel(session) {
   if (bucket === "active") return "Действует";
   if (bucket === "deleted") return "Удален";
   return "В архиве";
+}
+
+function getSessionIcon(session) {
+  const title = (session.title || "").toLowerCase();
+  if (title.includes("подряд") || title.includes("строит") || title.includes("ремонт")) return HardHat;
+  if (title.includes("найм") || title.includes("аренд")) return Home;
+  if (title.includes("saas") || title.includes("сайт") || title.includes("лендинг")) return Globe2;
+  if (title.includes("клининг")) return Sparkles;
+  if (title.includes("юруслуг") || title.includes("юрид")) return Scale;
+  if (title.includes("поставк") || title.includes("купли")) return BriefcaseBusiness;
+  if (title.includes("nda")) return ShieldCheck;
+  if (title.includes("займ")) return Building2;
+  if (title.includes("услуг")) return Hammer;
+  return FileText;
+}
+
+function getSessionCounterparty(session) {
+  if (session.party_2_email) return session.party_2_email;
+  if (session.my_role === "party_2") return "Сторона 1";
+  if (session.invite_token || session.status === "in_review") return "Сторона 2";
+  return "Без контрагента";
 }
 
 function getContractContext(session, detail) {
@@ -1106,7 +1149,9 @@ function App() {
                   {expandedSessionGroups.includes(filter.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   {filter.label}
                 </span>
-                <span className="session-count">{sessionCounters[filter.id] || 0}</span>
+                <span className={sessionCounters[filter.id] ? "session-count has-items" : "session-count"}>
+                  {sessionCounters[filter.id] || 0}
+                </span>
               </button>
               {expandedSessionGroups.includes(filter.id) && (
                 <div className="session-list">
@@ -1126,13 +1171,15 @@ function App() {
                             setSidebarOpen(false);
                           }}
                         >
-                          <span>{session.title}</span>
-                          <small>
-                            {formatSessionTimestamp(session)}
-                            {" · "}
-                            <b>{getSessionStatusLabel(session)}</b>
-                            {session.party_2_email ? ` · ${session.party_2_email}` : ""}
-                          </small>
+                          <span className="session-type-icon">
+                            {React.createElement(getSessionIcon(session), { size: 17 })}
+                          </span>
+                          <span className="session-compact">
+                            <strong>{getSessionCounterparty(session)}</strong>
+                            <small>
+                              {formatSessionTimestamp(session)} · {getSessionStatusLabel(session)}
+                            </small>
+                          </span>
                         </button>
                         {session.status === "finalized" || session.is_deleted ? null : deleteCandidateId === session.id ? (
                           <div className="delete-confirm">

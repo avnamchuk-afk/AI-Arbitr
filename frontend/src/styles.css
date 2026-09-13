@@ -683,11 +683,20 @@ button:hover {
 
 .session-tabs span {
   color: var(--muted);
+}
+
+.session-count {
   min-width: 22px;
   border-radius: 999px;
   padding: 2px 6px;
   text-align: center;
   background: rgb(64 90 138 / 10%);
+}
+
+.session-count.has-items {
+  color: #ffffff;
+  background: rgb(64 90 138 / 88%);
+  box-shadow: 0 6px 16px rgb(64 90 138 / 18%);
 }
 
 .session-empty {
@@ -708,12 +717,43 @@ button:hover {
 
 .session-open {
   display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
   text-align: left;
   min-width: 0;
 }
 
+.session-type-icon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: rgb(64 90 138);
+  background: rgb(64 90 138 / 10%);
+}
+
+.session-compact {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.session-compact strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-list small {
   color: var(--muted);
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-list small b {
