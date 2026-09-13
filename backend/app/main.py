@@ -28,7 +28,7 @@ from app.models.entities import (
 )
 from app.services.auth import generate_raw_token, hash_token, make_session_cookie, read_session_cookie, token_expires_at
 from app.services.contract_templates import build_housing_rent_contract
-from app.services.email import send_contract_invite, send_magic_link, smtp_is_configured
+from app.services.email import send_contract_invite, send_contract_signed_notice, send_magic_link, smtp_is_configured
 from app.services.pdf import build_contract_pdf
 from app.services.privacy import contains_passport_like_data
 from app.services.prompts import CONTRACT_SYSTEM_PROMPT, build_dispute_prompt
@@ -774,6 +774,10 @@ def delete_session(session_id: str, user: User = Depends(get_current_user), db: 
         raise HTTPException(status_code=404, detail="Сессия не найдена")
     if session.owner_user_id != user.id:
         raise HTTPException(status_code=403, detail="Удалить договор может только его создатель")
+    if session.status == SessionStatus.finalized or any(
+        participant.approval_status == ApprovalStatus.approved for participant in session.participants
+    ):
+        raise HTTPException(status_code=400, detail="Подписанные договоры защищены от удаления")
 
     db.query(Message).filter(Message.session_id == session.id).delete(synchronize_session=False)
     db.query(ContractVersion).filter(ContractVersion.session_id == session.id).delete(synchronize_session=False)
@@ -840,6 +844,36 @@ def count_completed_today(db: Session, user: User) -> int:
             ContractSession.finalized_at <= day_end,
         )
         .count()
+    )
+
+
+def finalize_signed_session(db: Session, session: ContractSession, final_version: ContractVersion) -> None:
+    owner = db.get(User, session.owner_user_id)
+    if owner is None:
+        raise HTTPException(status_code=400, detail="Владелец договора не найден")
+    if count_completed_today(db, owner) >= 10:
+        raise HTTPException(
+            status_code=429,
+            detail="Достигнут лимит бета-версии: 10 завершенных договоров в день. Доступ будет восстановлен завтра",
+        )
+    session.status = SessionStatus.finalized
+    session.finalized_at = now_utc()
+    session.download_token = session.download_token or uuid.uuid4()
+    session.is_completed = True
+    final_version.is_final = True
+    for participant in session.participants:
+        participant.approval_status = ApprovalStatus.approved
+        participant.approved_version_id = final_version.id
+    db.add(
+        Message(
+            session_id=session.id,
+            role=MessageRole.assistant,
+            content=(
+                "Договор подписан обеими сторонами путем простой электронной подписи. "
+                f"Финальная PDF-версия доступна по ссылке: {settings.api_base_url}/download/{session.download_token}.pdf\n\n"
+                "Чат по договору заблокирован. Доступны действия: «Открыть спор» и «Договор исполнен»."
+            ),
+        )
     )
 
 
@@ -1032,30 +1066,16 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
         db.add(user)
         db.flush()
 
-    owner = db.get(User, session.owner_user_id)
-    if owner is None:
-        raise HTTPException(status_code=400, detail="Владелец договора не найден")
-    if count_completed_today(db, owner) >= 10:
-        raise HTTPException(
-            status_code=429,
-            detail="Достигнут лимит бета-версии: 10 завершенных договоров в день. Доступ будет восстановлен завтра",
-        )
-
     participant.user_id = user.id
     participant.joined_at = participant.joined_at or now_utc()
     participant.approval_status = ApprovalStatus.approved
     participant.approved_version_id = latest_version.id
-    session.status = SessionStatus.finalized
-    session.finalized_at = now_utc()
-    session.download_token = session.download_token or uuid.uuid4()
-    session.is_completed = True
-    latest_version.is_final = True
     db.add(
         Message(
             session_id=session.id,
             role=MessageRole.system,
             content=(
-                "Вторая сторона согласовала договор.\n"
+                "Вторая сторона подписала договор простой электронной подписью.\n"
                 f"ФИО: {payload.full_name.strip()}\n"
                 f"Паспортные данные: {payload.passport.strip()}\n"
                 f"Email: {payload.email}"
@@ -1067,13 +1087,13 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
             session_id=session.id,
             role=MessageRole.assistant,
             content=(
-                "Вторая сторона согласовала договор. Финальная PDF-версия сформирована "
-                f"и доступна по ссылке: {settings.api_base_url}/download/{session.download_token}.pdf"
+                "Вторая сторона подписала договор. Теперь первой стороне нужно подписать договор "
+                "со своей стороны, после чего будет сформирована финальная PDF-версия."
             ),
         )
     )
     db.commit()
-    return {"finalized": True, "download_token": session.download_token}
+    return {"finalized": False, "party_two_signed": True}
 
 
 @app.post("/sessions/{session_id}/messages")
@@ -1267,6 +1287,13 @@ async def send_message(
             )
         if latest_version_before_answer is None and not used_fixed_template:
             answer = normalize_contract_legal_title(answer, payload.content)
+        if session.status == SessionStatus.finalized and is_dispute:
+            answer = (
+                answer
+                + "\n\nЧерез 3 рабочих дня после направления решения сторонам необходимо проверить исполнение. "
+                "Сторона, в пользу которой вынесено решение, должна закрыть спор при исполнении решения "
+                "либо использовать финальный PDF договора, решение AI-Арбитра и историю уведомлений для обращения в суд."
+            )
         if is_contract_update:
             requested_change = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
             try:
@@ -1343,22 +1370,31 @@ def approve_version(session_id: str, user: User = Depends(get_current_user), db:
         for item in participants
     )
     if both_approved:
-        owner = db.get(User, session.owner_user_id)
-        if owner is None:
-            raise HTTPException(status_code=400, detail="Владелец договора не найден")
-        if count_completed_today(db, owner) >= 10:
-            raise HTTPException(
-                status_code=429,
-                detail="Достигнут лимит бета-версии: 10 завершенных договоров в день. Доступ будет восстановлен завтра",
-            )
-        session.status = SessionStatus.finalized
-        session.finalized_at = now_utc()
-        session.download_token = session.download_token or uuid.uuid4()
-        session.is_completed = True
-        latest_version.is_final = True
+        finalize_signed_session(db, session, latest_version)
 
     db.commit()
+    if both_approved and session.download_token:
+        pdf_link = f"{settings.api_base_url}/download/{session.download_token}.pdf"
+        for item in participants:
+            if item.user and not is_guest_user(item.user):
+                send_contract_signed_notice(item.user.email, session.title, pdf_link)
     return {"finalized": both_approved, "status": session.status}
+
+
+@app.post("/sessions/{session_id}/complete")
+def complete_contract(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    session = get_accessible_session(db, session_id, user)
+    if session.status != SessionStatus.finalized:
+        raise HTTPException(status_code=400, detail="Отметить исполнение можно только по подписанному договору")
+    db.add(
+        Message(
+            session_id=session.id,
+            role=MessageRole.system,
+            content="Договор отмечен как исполненный. Чат сохранен в истории и защищен от удаления.",
+        )
+    )
+    db.commit()
+    return {"message": "Договор отмечен как исполненный"}
 
 
 @app.post("/sessions/{session_id}/request-changes")

@@ -100,7 +100,6 @@ function App() {
   const [sessionDetail, setSessionDetail] = useState(null);
   const [inviteLink, setInviteLink] = useState("");
   const [appNotice, setAppNotice] = useState("");
-  const [partyName, setPartyName] = useState("");
   const [partyEmail, setPartyEmail] = useState("");
   const [deleteCandidateId, setDeleteCandidateId] = useState("");
   const [chatMode, setChatMode] = useState("idle");
@@ -211,10 +210,10 @@ function App() {
       setReviewNotice(data.detail || "Не удалось подтвердить согласие");
       return;
     }
-    setReviewNotice("Согласие зафиксировано. Финальная PDF-версия договора сформирована.");
+    setReviewNotice("Подпись второй стороны зафиксирована. Финальная PDF-версия будет сформирована после подписи первой стороны.");
     setReviewData((current) => ({
       ...current,
-      finalized: true,
+      finalized: Boolean(data.finalized),
       approved: true,
       download_token: data.download_token,
     }));
@@ -292,7 +291,8 @@ function App() {
       credentials: "include",
     });
     if (!response.ok) {
-      setAppNotice("Не удалось удалить договор. Попробуйте еще раз.");
+      const data = await response.json().catch(() => ({}));
+      setAppNotice(data.detail || "Не удалось удалить договор. Попробуйте еще раз.");
       return;
     }
 
@@ -427,7 +427,7 @@ function App() {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ party_name: partyName, email: partyEmail || null }),
+      body: JSON.stringify({ email: partyEmail || null }),
     });
     if (!response.ok) return;
     const data = await response.json();
@@ -468,8 +468,41 @@ function App() {
     window.open(`${API_URL}/download/${token}.pdf`, "_blank", "noopener,noreferrer");
   }
 
+  async function signAsFirstParty() {
+    if (!currentSession) return;
+    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/approve`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setAppNotice(data.detail || "Не удалось подписать договор.");
+      return;
+    }
+    setAppNotice(data.finalized ? "Договор подписан обеими сторонами. Финальная PDF-версия сформирована." : "Подпись зафиксирована.");
+    loadSession(currentSession.id);
+    loadSessions();
+  }
+
+  async function markCompleted() {
+    if (!currentSession) return;
+    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/complete`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const data = await response.json().catch(() => ({}));
+    setAppNotice(response.ok ? data.message : data.detail || "Не удалось отметить исполнение.");
+    loadSession(currentSession.id);
+  }
+
   const hasContractVersion = Boolean(sessionDetail?.latest_version);
   const isFinalized = currentSession?.status === "finalized";
+  const partyTwoSigned = (sessionDetail?.participants || []).some(
+    (participant) => participant.role === "party_2" && participant.approval_status === "approved"
+  );
+  const partyOneSigned = (sessionDetail?.participants || []).some(
+    (participant) => participant.role === "party_1" && participant.approval_status === "approved"
+  );
   const isEmptySession = currentSession && messages.length === 0 && !thinking && !appNotice;
   const composerPlaceholder =
     chatMode === "question"
@@ -499,7 +532,7 @@ function App() {
           <header className="review-header">
             <span>AI-arbitr</span>
             <h1>{reviewData?.title || "Согласование договора"}</h1>
-            <p>Вам направлен договор на согласование. Проверьте текст и подтвердите согласие, если условия подходят.</p>
+            <p>Вам направлен договор на согласование. Проверьте текст, внесите свои данные и подпишите, если условия подходят.</p>
           </header>
           {reviewLoading && <p className="notice">Загружаю договор...</p>}
           {reviewNotice && <p className="app-notice">{reviewNotice}</p>}
@@ -519,11 +552,11 @@ function App() {
               <article className="review-contract">{reviewData.contract}</article>
               {reviewData.approved || reviewData.finalized ? (
                 <div className="review-approved">
-                  <Check size={18} /> Согласие уже зафиксировано.
+                  <Check size={18} /> Подпись уже зафиксирована.
                 </div>
               ) : (
                 <form className="review-form" onSubmit={approveReview}>
-                  <h2>Согласиться с договором</h2>
+                  <h2>Подписать договор</h2>
                   <input
                     value={reviewForm.fullName}
                     onChange={(event) => setReviewForm((form) => ({ ...form, fullName: event.target.value }))}
@@ -551,7 +584,7 @@ function App() {
                     <span>Я согласен на обработку персональных данных</span>
                   </label>
                   <button>
-                    <Check size={16} /> Согласиться
+                    <Check size={16} /> Подписать
                   </button>
                 </form>
               )}
@@ -685,7 +718,7 @@ function App() {
                 <span>{session.title}</span>
                 <small>{formatSessionTimestamp(session)}</small>
               </button>
-              {deleteCandidateId === session.id ? (
+              {session.status === "finalized" ? null : deleteCandidateId === session.id ? (
                 <div className="delete-confirm">
                   <button className="delete-yes" onClick={(event) => deleteSession(event, session)}>
                     Удалить
@@ -743,7 +776,15 @@ function App() {
                 )}
                 {hasContractVersion && !isFinalized && (
                   <section className="message assistant chat-actions">
-                    {questionResolved ? (
+                    {partyTwoSigned && !partyOneSigned ? (
+                      <div className="quick-flow">
+                        <strong>Вторая сторона подписала договор.</strong>
+                        <p>Проверьте финальную редакцию и подпишите договор со своей стороны. После этого будет сформирована PDF-версия с отметками простой электронной подписи.</p>
+                        <button onClick={signAsFirstParty}>
+                          <Check size={16} /> Подписать со своей стороны
+                        </button>
+                      </div>
+                    ) : questionResolved ? (
                       <div className="quick-flow">
                         <strong>Все понятно?</strong>
                         <div className="action-row">
@@ -773,11 +814,6 @@ function App() {
                         </p>
                         <KeyTermsCard terms={sessionDetail?.key_terms} />
                         <div className="party-form">
-                          <input
-                            value={partyName}
-                            onChange={(event) => setPartyName(event.target.value)}
-                            placeholder="Имя или название второй стороны"
-                          />
                           <input
                             value={partyEmail}
                             onChange={(event) => setPartyEmail(event.target.value)}
@@ -823,6 +859,9 @@ function App() {
                       )}
                       <button className="dispute-button" onClick={startDispute}>
                         Открыть спор
+                      </button>
+                      <button className="download-button" onClick={markCompleted}>
+                        Договор исполнен
                       </button>
                     </div>
                     {chatMode === "dispute" && (

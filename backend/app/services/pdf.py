@@ -107,6 +107,26 @@ def build_contract_pdf(
 
     story.extend(
         [
+            Spacer(1, 8),
+            para("Отметки простой электронной подписи", styles["AIHeading"]),
+        ]
+    )
+    for participant in participants:
+        user_email = participant.user.email if getattr(participant, "user", None) else "не привязан"
+        signed_at = session.finalized_at if participant.role.value == "party_1" else participant.joined_at
+        if participant.approval_status.value == "approved":
+            story.append(
+                para(
+                    "Подписано простой электронной подписью через сервис AI-arbitr. "
+                    f"Сторона: {participant.role.value}. Email/идентификатор: {user_email}. "
+                    f"Дата и время подписания: {signed_at or 'не указано'}. "
+                    f"ID договора: {session.id}.",
+                    styles["AIBase"],
+                )
+            )
+
+    story.extend(
+        [
             para("Финальный текст договора", styles["AIHeading"]),
             para(final_version.content, styles["AIBase"]),
             PageBreak(),
