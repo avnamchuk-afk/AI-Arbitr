@@ -68,8 +68,8 @@ button:hover {
 
 .review-header {
   display: grid;
-  gap: 8px;
-  padding: 20px 0 4px;
+  gap: 6px;
+  padding: 14px 0 2px;
 }
 
 .review-header span {
@@ -80,14 +80,15 @@ button:hover {
 .review-header h1 {
   margin: 0;
   color: var(--ink);
-  font-size: 28px;
+  font-size: 24px;
   letter-spacing: 0;
 }
 
 .review-header p {
   margin: 0;
   color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.35;
+  font-size: 14px;
 }
 
 .review-actions {
@@ -115,8 +116,9 @@ button:hover {
   max-height: 54vh;
   overflow: auto;
   white-space: pre-wrap;
-  line-height: 1.55;
-  padding: 16px;
+  line-height: 1.34;
+  padding: 12px;
+  font-size: 13px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-strong);
@@ -190,57 +192,57 @@ button:hover {
 
 .key-terms-card {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 8px;
+  padding: 10px;
   border: 1px solid rgb(64 90 138 / 22%);
   border-radius: 8px;
   background: rgb(255 255 255 / 58%);
-  box-shadow: 0 12px 34px rgb(23 34 47 / 7%);
+  box-shadow: 0 8px 22px rgb(23 34 47 / 5%);
   backdrop-filter: var(--blur);
 }
 
 .key-terms-card > strong {
   color: var(--ink);
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .key-terms-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 7px 9px;
 }
 
 .key-term {
   min-width: 0;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: 17px minmax(0, 1fr);
+  gap: 6px;
   align-items: flex-start;
 }
 
 .key-check {
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   display: grid;
   place-items: center;
   border-radius: 999px;
   color: #ffffff;
-  background: #4f8b74;
-  box-shadow: 0 6px 16px rgb(79 139 116 / 20%);
+  background: rgb(64 90 138 / 78%);
+  box-shadow: none;
 }
 
 .key-term small {
   display: block;
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.25;
+  font-size: 10px;
+  line-height: 1.15;
 }
 
 .key-term p {
-  margin: 2px 0 0;
+  margin: 1px 0 0;
   color: var(--ink);
-  font-size: 13px;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
@@ -773,7 +775,7 @@ button:hover {
 .message {
   max-width: min(760px, 92%);
   white-space: pre-wrap;
-  line-height: 1.55;
+  line-height: 1.42;
   padding: 14px 16px;
   border-radius: 8px;
   box-shadow: 0 10px 28px rgb(23 34 47 / 6%);

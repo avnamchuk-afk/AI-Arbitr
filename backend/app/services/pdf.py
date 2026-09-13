@@ -88,29 +88,11 @@ def build_contract_pdf(
     )
 
     story = [
-        para("AI-Арбитр: договор и история согласования", styles["AITitle"]),
-        para(f"ID сессии: {session.id}", styles["AIBase"]),
-        para(f"Статус: {session.status.value}", styles["AIBase"]),
-        para(f"Дата финализации: {session.finalized_at or 'не указана'}", styles["AIBase"]),
-        Spacer(1, 8),
-        para("Стороны", styles["AIHeading"]),
+        para(session.title or "Договор", styles["AITitle"]),
+        para(final_version.content, styles["AIBase"]),
+        Spacer(1, 10),
+        para("Отметки простой электронной подписи", styles["AIHeading"]),
     ]
-
-    for participant in participants:
-        user_email = participant.user.email if getattr(participant, "user", None) else "не привязан"
-        story.append(
-            para(
-                f"{participant.role.value}: {user_email}, статус согласия: {participant.approval_status.value}",
-                styles["AIBase"],
-            )
-        )
-
-    story.extend(
-        [
-            Spacer(1, 8),
-            para("Отметки простой электронной подписи", styles["AIHeading"]),
-        ]
-    )
     for participant in participants:
         user_email = participant.user.email if getattr(participant, "user", None) else "не привязан"
         signed_at = session.finalized_at if participant.role.value == "party_1" else participant.joined_at
@@ -127,8 +109,8 @@ def build_contract_pdf(
 
     story.extend(
         [
-            para("Финальный текст договора", styles["AIHeading"]),
-            para(final_version.content, styles["AIBase"]),
+            para(f"ID сессии: {session.id}", styles["AIBase"]),
+            para(f"Дата финализации: {session.finalized_at or 'не указана'}", styles["AIBase"]),
             PageBreak(),
             para("История обсуждения", styles["AIHeading"]),
         ]

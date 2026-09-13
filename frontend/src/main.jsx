@@ -234,7 +234,7 @@ function App() {
       setReviewNotice(data.detail || "Не удалось подтвердить согласие");
       return;
     }
-    setReviewNotice("Подпись второй стороны зафиксирована. Финальная PDF-версия будет сформирована после подписи первой стороны.");
+    setReviewNotice("Подпись зафиксирована.");
     setReviewData((current) => ({
       ...current,
       finalized: Boolean(data.finalized),
@@ -511,7 +511,7 @@ function App() {
       setAppNotice(data.detail || "Не удалось подписать договор.");
       return;
     }
-    setAppNotice(data.finalized ? "Договор подписан обеими сторонами. Финальная PDF-версия сформирована." : "Подпись зафиксирована.");
+    setAppNotice(data.finalized ? "Договор подписан." : "Подпись зафиксирована.");
     loadSession(currentSession.id);
     loadSessions();
   }
@@ -567,7 +567,7 @@ function App() {
           <header className="review-header">
             <span>AI-arbitr</span>
             <h1>{reviewData?.title || "Согласование договора"}</h1>
-            <p>Вам направлен договор на согласование. Проверьте текст, внесите свои данные и подпишите, если условия подходят.</p>
+            <p>Проверьте условия, откройте PDF при необходимости и подпишите, если все подходит.</p>
           </header>
           {reviewLoading && <p className="notice">Загружаю договор...</p>}
           {reviewNotice && <p className="app-notice">{reviewNotice}</p>}
