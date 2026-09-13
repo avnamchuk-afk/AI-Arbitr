@@ -1721,6 +1721,13 @@ async def send_message(
             answer = clean_contract_markdown(answer)
         if should_save_contract_version:
             answer = ensure_ai_arbitr_dispute_section(answer)
+            next_version_number = (
+                db.query(ContractVersion)
+                .filter(ContractVersion.session_id == session.id)
+                .count()
+                + 1
+            )
+            answer = apply_contract_number(answer, next_version_number)
         if session.status == SessionStatus.finalized and is_dispute:
             answer = (
                 answer
