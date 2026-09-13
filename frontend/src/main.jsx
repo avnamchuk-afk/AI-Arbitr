@@ -97,6 +97,7 @@ function App() {
   const [draft, setDraft] = useState(localStorage.getItem("ai-arbitr-draft") || "");
   const [thinking, setThinking] = useState(false);
   const [thinkingStep, setThinkingStep] = useState("");
+  const [thinkingProgress, setThinkingProgress] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loginNotice, setLoginNotice] = useState("");
   const [devLink, setDevLink] = useState("");
@@ -353,14 +354,20 @@ function App() {
     setMessages((items) => [...items, { role: "user", content: rawContent }]);
     setThinking(true);
     setThinkingStep(thinkingSteps[0]);
+    setThinkingProgress(8);
     let thinkingTimer;
     try {
       let stepIndex = 1;
       thinkingTimer = window.setInterval(() => {
-        setThinkingStep(thinkingSteps[Math.min(stepIndex, thinkingSteps.length - 1)]);
+        const cappedStepIndex = Math.min(stepIndex, thinkingSteps.length - 1);
+        setThinkingStep(thinkingSteps[cappedStepIndex]);
+        setThinkingProgress((current) => {
+          const stepProgress = Math.round(((cappedStepIndex + 1) / thinkingSteps.length) * 86);
+          return Math.min(92, Math.max(current + 3, stepProgress));
+        });
         stepIndex += 1;
         if (stepIndex >= thinkingSteps.length) {
-          window.clearInterval(thinkingTimer);
+          setThinkingProgress((current) => Math.max(current, 92));
         }
       }, 1900);
       const response = await fetch(`${API_URL}/sessions/${currentSession.id}/messages`, {
@@ -375,6 +382,7 @@ function App() {
       }
       if (thinkingTimer) window.clearInterval(thinkingTimer);
       setThinkingStep(thinkingSteps[thinkingSteps.length - 1]);
+      setThinkingProgress(100);
       await sleep(450);
       setThinking(false);
       if (!isQuestion) {
@@ -405,6 +413,7 @@ function App() {
       if (thinkingTimer) window.clearInterval(thinkingTimer);
       setThinking(false);
       setThinkingStep("");
+      setThinkingProgress(0);
     }
   }
 
@@ -855,7 +864,14 @@ function App() {
                 ))}
                 {thinking && (
                   <article className="message assistant thinking">
-                    <span /> {thinkingStep || "Арби думает..."}
+                    <div className="thinking-head">
+                      <span>Арби готовит ответ</span>
+                      <strong>{thinkingProgress}%</strong>
+                    </div>
+                    <div className="thinking-bar" aria-hidden="true">
+                      <i style={{ width: `${thinkingProgress}%` }} />
+                    </div>
+                    <p>{thinkingStep || "Арби думает..."}</p>
                   </article>
                 )}
                 {hasContractVersion && !isFinalized && (
