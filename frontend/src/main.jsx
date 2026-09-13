@@ -187,6 +187,50 @@ function getHistoryEvent(message) {
   return null;
 }
 
+function getContractContext(session, detail) {
+  return `${session?.title || ""}\n${detail?.latest_version?.content || ""}`.toLowerCase();
+}
+
+function getQuestionPlaceholder(session, detail) {
+  const context = getContractContext(session, detail);
+  if (context.includes("найм") || context.includes("квартир") || context.includes("жил")) {
+    return "Например: что означает обеспечительный платеж и когда его вернут?";
+  }
+  if (context.includes("подряд") || context.includes("строител") || context.includes("ремонт")) {
+    return "Например: что будет, если подрядчик нарушит срок работ?";
+  }
+  if (context.includes("услуг") || context.includes("оказан")) {
+    return "Например: как понять, какие услуги считаются оказанными?";
+  }
+  if (context.includes("сайт") || context.includes("saas") || context.includes("саас") || context.includes("разработ")) {
+    return "Например: когда результат считается принятым заказчиком?";
+  }
+  if (context.includes("поставк") || context.includes("купл") || context.includes("продаж")) {
+    return "Например: что будет при просрочке поставки или оплаты?";
+  }
+  return "Например: какие риски есть в этом условии?";
+}
+
+function getAdditionPlaceholder(session, detail) {
+  const context = getContractContext(session, detail);
+  if (context.includes("найм") || context.includes("квартир") || context.includes("жил")) {
+    return "Например: добавить запрет проживания с животными без согласия";
+  }
+  if (context.includes("подряд") || context.includes("строител") || context.includes("ремонт")) {
+    return "Например: добавить пеню за просрочку выполнения работ";
+  }
+  if (context.includes("услуг") || context.includes("оказан")) {
+    return "Например: добавить порядок подтверждения оказанных услуг";
+  }
+  if (context.includes("сайт") || context.includes("saas") || context.includes("саас") || context.includes("разработ")) {
+    return "Например: добавить этап приемки и исправления замечаний";
+  }
+  if (context.includes("поставк") || context.includes("купл") || context.includes("продаж")) {
+    return "Например: добавить ответственность за просрочку поставки";
+  }
+  return "Например: добавить условие о сроках, оплате или ответственности";
+}
+
 function LogoMark({ compact = false }) {
   return (
     <div className={compact ? "brand-mark compact" : "brand-mark"} aria-label="AI-Arbitr beta">
@@ -680,9 +724,9 @@ function App() {
   const isEmptySession = currentSession && messages.length === 0 && !thinking && !appNotice;
   const composerPlaceholder =
     chatMode === "question"
-      ? "Например: что означает обеспечительный платеж и когда его вернут?"
+      ? getQuestionPlaceholder(currentSession, sessionDetail)
       : chatMode === "add"
-        ? "Например: добавить запрет проживания с животными без согласия"
+        ? getAdditionPlaceholder(currentSession, sessionDetail)
         : chatMode === "dispute"
           ? "Опишите, что произошло: кто, когда, какое условие нарушил"
           : "Например: составь договор найма квартиры";
