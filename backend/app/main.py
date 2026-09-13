@@ -1308,7 +1308,7 @@ def create_session(user: User = Depends(get_current_user), db: Session = Depends
 def list_sessions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     ensure_demo_session(db, user)
     db.commit()
-    return (
+    sessions = (
         db.query(ContractSession)
         .join(ContractParticipant, ContractParticipant.session_id == ContractSession.id)
         .filter(or_(ContractSession.owner_user_id == user.id, ContractParticipant.user_id == user.id))
@@ -1316,6 +1316,7 @@ def list_sessions(user: User = Depends(get_current_user), db: Session = Depends(
         .order_by(ContractSession.updated_at.desc())
         .all()
     )
+    return [serialize_session_summary(db, session, user) for session in sessions]
 
 
 @app.get("/sessions/{session_id}")
@@ -1400,6 +1401,39 @@ def get_final_version(db: Session, session: ContractSession) -> ContractVersion 
         .order_by(ContractVersion.version_number.desc())
         .first()
     )
+
+
+def serialize_session_summary(db: Session, session: ContractSession, user: User) -> dict:
+    participants = list(session.participants)
+    current_participant = next((participant for participant in participants if participant.user_id == user.id), None)
+    party_1 = next((participant for participant in participants if participant.role == ParticipantRole.party_1), None)
+    party_2 = next((participant for participant in participants if participant.role == ParticipantRole.party_2), None)
+    completed_event_exists = (
+        db.query(Message.id)
+        .filter(
+            Message.session_id == session.id,
+            Message.role == MessageRole.system,
+            Message.content.startswith("Договор отмечен как исполненный"),
+        )
+        .first()
+        is not None
+    )
+    return {
+        "id": session.id,
+        "owner_user_id": session.owner_user_id,
+        "title": session.title,
+        "status": session.status,
+        "is_completed": completed_event_exists,
+        "finalized_at": session.finalized_at,
+        "download_token": session.download_token,
+        "invite_token": session.invite_token,
+        "created_at": session.created_at,
+        "updated_at": session.updated_at,
+        "my_role": current_participant.role if current_participant else None,
+        "party_1_approved": party_1.approval_status == ApprovalStatus.approved if party_1 else False,
+        "party_2_approved": party_2.approval_status == ApprovalStatus.approved if party_2 else False,
+        "party_2_email": party_2.user.email if party_2 and party_2.user and not is_guest_user(party_2.user) else "",
+    }
 
 
 def count_completed_today(db: Session, user: User) -> int:

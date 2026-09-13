@@ -187,6 +187,34 @@ function getHistoryEvent(message) {
   return null;
 }
 
+const SESSION_FILTERS = [
+  { id: "draft", label: "Черновики" },
+  { id: "sent", label: "Направлены" },
+  { id: "incoming", label: "Входящие" },
+  { id: "my-signature", label: "Моя подпись" },
+  { id: "active", label: "Исполняются" },
+  { id: "closed", label: "Закрытые" },
+];
+
+function getSessionBucket(session) {
+  if (session.is_completed) return "closed";
+  if (session.status === "finalized") return "active";
+  if (session.my_role === "party_2") return "incoming";
+  if (session.party_2_approved && !session.party_1_approved) return "my-signature";
+  if (session.status === "in_review" || session.invite_token || session.party_2_email) return "sent";
+  return "draft";
+}
+
+function getSessionStatusLabel(session) {
+  const bucket = getSessionBucket(session);
+  if (bucket === "draft") return "Черновик";
+  if (bucket === "sent") return "На согласовании";
+  if (bucket === "incoming") return "Входящий";
+  if (bucket === "my-signature") return "Ждет моей подписи";
+  if (bucket === "active") return "Исполняется";
+  return "Закрыт";
+}
+
 function getContractContext(session, detail) {
   return `${session?.title || ""}\n${detail?.latest_version?.content || ""}`.toLowerCase();
 }
@@ -292,7 +320,7 @@ function App() {
   const [partyEmail, setPartyEmail] = useState("");
   const [deleteCandidateId, setDeleteCandidateId] = useState("");
   const [chatMode, setChatMode] = useState("idle");
-  const [sessionListMode, setSessionListMode] = useState("active");
+  const [sessionListMode, setSessionListMode] = useState("draft");
   const [questionResolved, setQuestionResolved] = useState(false);
   const [authPromptTitle, setAuthPromptTitle] = useState("Сохранить историю");
   const [authPromptCopy, setAuthPromptCopy] = useState(
@@ -513,6 +541,7 @@ function App() {
     setPartyEmail("");
     setChatMode("idle");
     setQuestionResolved(false);
+    setSessionListMode("draft");
     setSessions([session, ...sessions]);
     setMessages([]);
     setSidebarOpen(false);
@@ -755,9 +784,11 @@ function App() {
 
   const hasContractVersion = Boolean(sessionDetail?.latest_version);
   const isFinalized = currentSession?.status === "finalized";
-  const activeSessions = sessions.filter((session) => session.status !== "finalized");
-  const archivedSessions = sessions.filter((session) => session.status === "finalized");
-  const visibleSessions = sessionListMode === "archive" ? archivedSessions : activeSessions;
+  const sessionCounters = SESSION_FILTERS.reduce((acc, filter) => {
+    acc[filter.id] = sessions.filter((session) => getSessionBucket(session) === filter.id).length;
+    return acc;
+  }, {});
+  const visibleSessions = sessions.filter((session) => getSessionBucket(session) === sessionListMode);
   const partyTwoSigned = (sessionDetail?.participants || []).some(
     (participant) => participant.role === "party_2" && participant.approval_status === "approved"
   );
@@ -1026,26 +1057,20 @@ function App() {
           <Plus size={18} /> Новый договор
         </button>
         <div className="session-tabs" role="tablist" aria-label="Список договоров">
-          <button
-            className={sessionListMode === "active" ? "active" : ""}
-            onClick={() => setSessionListMode("active")}
-            type="button"
-          >
-            Рабочие <span>{activeSessions.length}</span>
-          </button>
-          <button
-            className={sessionListMode === "archive" ? "active" : ""}
-            onClick={() => setSessionListMode("archive")}
-            type="button"
-          >
-            Архив <span>{archivedSessions.length}</span>
-          </button>
+          {SESSION_FILTERS.map((filter) => (
+            <button
+              key={filter.id}
+              className={sessionListMode === filter.id ? "active" : ""}
+              onClick={() => setSessionListMode(filter.id)}
+              type="button"
+            >
+              {filter.label} <span>{sessionCounters[filter.id] || 0}</span>
+            </button>
+          ))}
         </div>
         <div className="session-list">
           {visibleSessions.length === 0 && (
-            <p className="session-empty">
-              {sessionListMode === "archive" ? "Финализированных договоров пока нет." : "Рабочих договоров пока нет."}
-            </p>
+            <p className="session-empty">В этой категории пока нет договоров.</p>
           )}
           {visibleSessions.map((session) => (
             <div key={session.id} className="session-item">
@@ -1061,7 +1086,9 @@ function App() {
                 <span>{session.title}</span>
                 <small>
                   {formatSessionTimestamp(session)}
-                  {session.status === "finalized" ? " · подписан" : ""}
+                  {" · "}
+                  <b>{getSessionStatusLabel(session)}</b>
+                  {session.party_2_email ? ` · ${session.party_2_email}` : ""}
                 </small>
               </button>
               {session.status === "finalized" ? null : deleteCandidateId === session.id ? (

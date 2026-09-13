@@ -609,17 +609,22 @@ button:hover {
 
 .session-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
 .session-tabs button {
-  min-height: 36px;
+  min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--muted);
   background: rgb(255 255 255 / 34%);
-  font-size: 13px;
+  font-size: 12px;
+  padding: 6px 7px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .session-tabs button.active {
@@ -630,6 +635,11 @@ button:hover {
 
 .session-tabs span {
   color: var(--muted);
+  min-width: 22px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  text-align: center;
+  background: rgb(64 90 138 / 10%);
 }
 
 .session-empty {
@@ -656,6 +666,11 @@ button:hover {
 
 .session-list small {
   color: var(--muted);
+}
+
+.session-list small b {
+  color: var(--ink);
+  font-weight: 650;
 }
 
 .delete-session {
