@@ -613,6 +613,11 @@ button:hover {
   gap: 6px;
 }
 
+.session-group {
+  display: grid;
+  gap: 6px;
+}
+
 .session-tabs button {
   min-height: 36px;
   border: 1px solid var(--line);
@@ -625,6 +630,22 @@ button:hover {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+}
+
+.session-tabs button:disabled {
+  opacity: 0.58;
+  cursor: default;
+}
+
+.session-group-title {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-group .session-list {
+  padding-left: 12px;
 }
 
 .session-search {

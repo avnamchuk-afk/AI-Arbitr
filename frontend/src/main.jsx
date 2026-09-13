@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Check, Copy, Download, LogOut, Menu, Plus, Search, Send, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, Download, LogOut, Menu, Plus, Search, Send, Trash2 } from "lucide-react";
 import "./styles.css";
 
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
@@ -320,7 +320,7 @@ function App() {
   const [partyEmail, setPartyEmail] = useState("");
   const [deleteCandidateId, setDeleteCandidateId] = useState("");
   const [chatMode, setChatMode] = useState("idle");
-  const [sessionListMode, setSessionListMode] = useState("draft");
+  const [expandedSessionGroups, setExpandedSessionGroups] = useState(["draft"]);
   const [sessionSearch, setSessionSearch] = useState("");
   const [questionResolved, setQuestionResolved] = useState(false);
   const [authPromptTitle, setAuthPromptTitle] = useState("Сохранить историю");
@@ -542,7 +542,7 @@ function App() {
     setPartyEmail("");
     setChatMode("idle");
     setQuestionResolved(false);
-    setSessionListMode("draft");
+    setExpandedSessionGroups(["draft"]);
     setSessionSearch("");
     setSessions([session, ...sessions]);
     setMessages([]);
@@ -791,8 +791,7 @@ function App() {
     return acc;
   }, {});
   const normalizedSessionSearch = sessionSearch.trim().toLowerCase();
-  const visibleSessions = sessions.filter((session) => {
-    if (getSessionBucket(session) !== sessionListMode) return false;
+  const matchesSessionSearch = (session) => {
     if (!normalizedSessionSearch) return true;
     const searchableText = [
       session.title,
@@ -804,7 +803,11 @@ function App() {
       .join(" ")
       .toLowerCase();
     return searchableText.includes(normalizedSessionSearch);
-  });
+  };
+  const sessionsByGroup = SESSION_FILTERS.reduce((acc, filter) => {
+    acc[filter.id] = sessions.filter((session) => getSessionBucket(session) === filter.id && matchesSessionSearch(session));
+    return acc;
+  }, {});
   const partyTwoSigned = (sessionDetail?.participants || []).some(
     (participant) => participant.role === "party_2" && participant.approval_status === "approved"
   );
@@ -1080,62 +1083,80 @@ function App() {
             placeholder="Поиск по договорам"
           />
         </label>
-        <div className="session-tabs" role="tablist" aria-label="Список договоров">
+        <div className="session-tabs" role="list" aria-label="Список договоров">
           {SESSION_FILTERS.map((filter) => (
-            <button
-              key={filter.id}
-              className={sessionListMode === filter.id ? "active" : ""}
-              onClick={() => setSessionListMode(filter.id)}
-              type="button"
-            >
-              {filter.label} <span>{sessionCounters[filter.id] || 0}</span>
-            </button>
-          ))}
-        </div>
-        <div className="session-list">
-          {visibleSessions.length === 0 && (
-            <p className="session-empty">В этой категории пока нет договоров.</p>
-          )}
-          {visibleSessions.map((session) => (
-            <div key={session.id} className="session-item">
+            <section className="session-group" key={filter.id}>
               <button
-                className="session-open"
+                className={expandedSessionGroups.includes(filter.id) ? "active" : ""}
+                disabled={!sessionCounters[filter.id]}
                 onClick={() => {
-                  setCurrentSession(session);
-                  setInviteLink("");
-                  setDeleteCandidateId("");
-                  setSidebarOpen(false);
+                  if (!sessionCounters[filter.id]) return;
+                  setExpandedSessionGroups((groups) =>
+                    groups.includes(filter.id)
+                      ? groups.filter((group) => group !== filter.id)
+                      : [...groups, filter.id]
+                  );
                 }}
+                type="button"
               >
-                <span>{session.title}</span>
-                <small>
-                  {formatSessionTimestamp(session)}
-                  {" · "}
-                  <b>{getSessionStatusLabel(session)}</b>
-                  {session.party_2_email ? ` · ${session.party_2_email}` : ""}
-                </small>
+                <span className="session-group-title">
+                  {expandedSessionGroups.includes(filter.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {filter.label}
+                </span>
+                <span className="session-count">{sessionCounters[filter.id] || 0}</span>
               </button>
-              {session.status === "finalized" ? null : deleteCandidateId === session.id ? (
-                <div className="delete-confirm">
-                  <button className="delete-yes" onClick={(event) => deleteSession(event, session)}>
-                    Удалить
-                  </button>
-                  <button
-                    className="delete-no"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setDeleteCandidateId("");
-                    }}
-                  >
-                    Отмена
-                  </button>
+              {expandedSessionGroups.includes(filter.id) && (
+                <div className="session-list">
+                  {sessionsByGroup[filter.id].length === 0 ? (
+                    <p className="session-empty">
+                      {normalizedSessionSearch ? "Поиск ничего не нашел." : "В этой категории пока нет договоров."}
+                    </p>
+                  ) : (
+                    sessionsByGroup[filter.id].map((session) => (
+                      <div key={session.id} className="session-item">
+                        <button
+                          className="session-open"
+                          onClick={() => {
+                            setCurrentSession(session);
+                            setInviteLink("");
+                            setDeleteCandidateId("");
+                            setSidebarOpen(false);
+                          }}
+                        >
+                          <span>{session.title}</span>
+                          <small>
+                            {formatSessionTimestamp(session)}
+                            {" · "}
+                            <b>{getSessionStatusLabel(session)}</b>
+                            {session.party_2_email ? ` · ${session.party_2_email}` : ""}
+                          </small>
+                        </button>
+                        {session.status === "finalized" ? null : deleteCandidateId === session.id ? (
+                          <div className="delete-confirm">
+                            <button className="delete-yes" onClick={(event) => deleteSession(event, session)}>
+                              Удалить
+                            </button>
+                            <button
+                              className="delete-no"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setDeleteCandidateId("");
+                              }}
+                            >
+                              Отмена
+                            </button>
+                          </div>
+                        ) : (
+                          <button className="delete-session" onClick={(event) => confirmDeleteSession(event, session)} aria-label="Удалить чат">
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
                 </div>
-              ) : (
-                <button className="delete-session" onClick={(event) => confirmDeleteSession(event, session)} aria-label="Удалить чат">
-                  <Trash2 size={16} />
-                </button>
               )}
-            </div>
+            </section>
           ))}
         </div>
         <div className="sidebar-footer">
