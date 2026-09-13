@@ -337,6 +337,12 @@ def normalize_contract_legal_title(contract_text: str, user_request: str) -> str
     return f"{legal_title}\n\n{contract_text}"
 
 
+def clean_contract_markdown(contract_text: str) -> str:
+    cleaned = re.sub(r"^\s{0,3}#{1,6}\s*", "", contract_text, flags=re.MULTILINE)
+    cleaned = cleaned.replace("**", "")
+    return cleaned.strip()
+
+
 def build_question_reasoning_note(question: str) -> str:
     return (
         "Что делает Арби:\n"
@@ -938,17 +944,7 @@ def finalize_signed_session(db: Session, session: ContractSession, final_version
     for participant in session.participants:
         participant.approval_status = ApprovalStatus.approved
         participant.approved_version_id = final_version.id
-    db.add(
-        Message(
-            session_id=session.id,
-            role=MessageRole.assistant,
-            content=(
-                "Договор подписан обеими сторонами путем простой электронной подписи. "
-                f"Финальная PDF-версия доступна по ссылке: {settings.api_base_url}/download/{session.download_token}.pdf\n\n"
-                "Чат по договору заблокирован. Доступны действия: «Открыть спор» и «Договор исполнен»."
-            ),
-        )
-    )
+    db.add(Message(session_id=session.id, role=MessageRole.system, content="CONTRACT_FINALIZED"))
 
 
 def format_history(messages: list[Message]) -> str:
@@ -1015,10 +1011,12 @@ def ensure_demo_session(db: Session, user: User) -> None:
 
 
 def save_contract_version(db: Session, session: ContractSession, content: str) -> ContractVersion:
+    content = clean_contract_markdown(content)
     version_count = db.query(ContractVersion).filter(ContractVersion.session_id == session.id).count()
+    version_number = version_count + 1
     version = ContractVersion(
         session_id=session.id,
-        version_number=version_count + 1,
+        version_number=version_number,
         content=content,
     )
     session.status = SessionStatus.in_review
@@ -1026,6 +1024,7 @@ def save_contract_version(db: Session, session: ContractSession, content: str) -
         participant.approval_status = ApprovalStatus.pending
         participant.approved_version_id = None
     db.add(version)
+    db.add(Message(session_id=session.id, role=MessageRole.system, content=f"VERSION_CREATED|{version_number}"))
     return version
 
 
@@ -1049,6 +1048,8 @@ def create_invite(
         db.refresh(session)
     invite_link = f"{settings.app_base_url}/review/{session.invite_token}"
     pdf_link = f"{settings.api_base_url}/review/{session.invite_token}.pdf"
+    latest_version = get_latest_version(db, session)
+    version_number = latest_version.version_number if latest_version else 1
     sent = False
     if payload and payload.email:
         invited_user = db.query(User).filter(User.email == str(payload.email)).one_or_none()
@@ -1064,12 +1065,11 @@ def create_invite(
         party_2.user_id = invited_user.id
         send_contract_invite(payload.email, invite_link, session.title, pdf_link)
         sent = smtp_is_configured()
-        party_label = payload.party_name.strip() or str(payload.email)
         db.add(
             Message(
                 session_id=session.id,
                 role=MessageRole.system,
-                content=f"Ссылка на просмотр и согласие отправлена для {party_label}: {payload.email}",
+                content=f"VERSION_SENT|{version_number}|{payload.email}",
             )
         )
         db.commit()
@@ -1160,22 +1160,7 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
         Message(
             session_id=session.id,
             role=MessageRole.system,
-            content=(
-                "Вторая сторона подписала договор простой электронной подписью.\n"
-                f"ФИО: {payload.full_name.strip()}\n"
-                f"Паспортные данные: {payload.passport.strip()}\n"
-                f"Email: {payload.email}"
-            ),
-        )
-    )
-    db.add(
-        Message(
-            session_id=session.id,
-            role=MessageRole.assistant,
-            content=(
-                "Вторая сторона подписала договор. Теперь первой стороне нужно подписать договор "
-                "со своей стороны, после чего будет сформирована финальная PDF-версия."
-            ),
+            content=f"VERSION_APPROVED|{latest_version.version_number}|{payload.email}",
         )
     )
     db.commit()
@@ -1378,6 +1363,8 @@ async def send_message(
             )
         if latest_version_before_answer is None and not used_fixed_template:
             answer = normalize_contract_legal_title(answer, payload.content)
+        if should_save_contract_version or looks_like_contract_text(answer):
+            answer = clean_contract_markdown(answer)
         if session.status == SessionStatus.finalized and is_dispute:
             answer = (
                 answer
@@ -1452,6 +1439,13 @@ def approve_version(session_id: str, user: User = Depends(get_current_user), db:
     participant = get_user_participant(db, session, user)
     participant.approval_status = ApprovalStatus.approved
     participant.approved_version_id = latest_version.id
+    db.add(
+        Message(
+            session_id=session.id,
+            role=MessageRole.system,
+            content=f"VERSION_APPROVED|{latest_version.version_number}|{user.email}",
+        )
+    )
 
     participants = session.participants
     both_approved = all(

@@ -44,11 +44,9 @@ def send_contract_invite(email: str, link: str, title: str, pdf_link: str | None
     message["To"] = email
     message.set_content(
         "Здравствуйте!\n\n"
-        f"Вам направлен на согласование договор: {title}.\n\n"
-        "Посмотреть договор и подтвердить согласие можно по ссылке:\n"
+        f"Вам направлен на согласование проект договора: {title}.\n\n"
         f"{link}\n\n"
-        + (f"PDF-версия договора:\n{pdf_link}\n\n" if pdf_link else "")
-        + "Если условия подходят, нажмите кнопку согласия и укажите свои данные.\n"
+        + (f"PDF-версия:\n{pdf_link}\n" if pdf_link else "")
     )
 
     if settings.smtp_port == 465:

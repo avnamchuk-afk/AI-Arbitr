@@ -810,6 +810,28 @@ button:hover {
   font-style: italic;
 }
 
+.history-event {
+  align-self: center;
+  max-width: min(560px, 92%);
+  display: grid;
+  gap: 2px;
+  padding: 8px 11px;
+  border: 1px solid rgb(126 148 160 / 22%);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgb(255 255 255 / 42%);
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  backdrop-filter: var(--blur);
+}
+
+.history-event strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .message.thinking {
   display: grid;
   gap: 8px;

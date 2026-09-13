@@ -60,6 +60,47 @@ function formatFinalizedDate(session) {
   });
 }
 
+function formatEventTimestamp(timestamp) {
+  if (!timestamp) return "";
+  return new Date(timestamp).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getHistoryEvent(message) {
+  if (message.role !== "system") return null;
+  const parts = message.content.split("|");
+  if (parts[0] === "VERSION_CREATED") {
+    return {
+      title: `Версия №${parts[1] || "1"} создана`,
+      meta: formatEventTimestamp(message.created_at),
+    };
+  }
+  if (parts[0] === "VERSION_SENT") {
+    return {
+      title: `Версия №${parts[1] || "1"} направлена на согласование`,
+      meta: [parts[2], formatEventTimestamp(message.created_at)].filter(Boolean).join(" · "),
+    };
+  }
+  if (parts[0] === "VERSION_APPROVED") {
+    return {
+      title: `Версия №${parts[1] || "1"} согласована`,
+      meta: [parts[2], formatEventTimestamp(message.created_at)].filter(Boolean).join(" · "),
+    };
+  }
+  if (parts[0] === "CONTRACT_FINALIZED") {
+    return {
+      title: "Договор подписан сторонами",
+      meta: formatEventTimestamp(message.created_at),
+    };
+  }
+  return null;
+}
+
 function KeyTermsCard({ terms }) {
   const visibleTerms = (terms || []).filter((term) => term.value && term.value !== "не указано");
   if (!visibleTerms.length) return null;
@@ -877,11 +918,22 @@ function App() {
             <div className="chat-thread">
               {appNotice && <div className="app-notice">{appNotice}</div>}
               <div className="messages">
-                {messages.map((message, index) => (
-                  <article key={index} className={`message ${message.role}`}>
-                    {message.role === "system" ? <em>{message.content}</em> : message.content}
-                  </article>
-                ))}
+                {messages.map((message, index) => {
+                  const historyEvent = getHistoryEvent(message);
+                  if (historyEvent) {
+                    return (
+                      <article key={index} className="history-event">
+                        <strong>{historyEvent.title}</strong>
+                        {historyEvent.meta && <span>{historyEvent.meta}</span>}
+                      </article>
+                    );
+                  }
+                  return (
+                    <article key={index} className={`message ${message.role}`}>
+                      {message.role === "system" ? <em>{message.content}</em> : message.content}
+                    </article>
+                  );
+                })}
                 {thinking && (
                   <article className="message assistant thinking">
                     <div className="thinking-head">
