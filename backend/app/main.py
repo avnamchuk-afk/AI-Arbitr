@@ -269,6 +269,43 @@ KNOWN_SERVICE_MARKERS = (
     "охран",
 )
 
+BROAD_CONTRACT_PATTERNS = (
+    "сделай договор",
+    "составь договор",
+    "подготовь договор",
+    "нужен договор",
+    "договор с подрядчиком",
+    "договор на сотрудничество",
+    "договор о сотрудничестве",
+)
+
+CONCRETE_CONTRACT_MARKERS = (
+    "найм",
+    "аренд",
+    "квартир",
+    "жил",
+    "сайт",
+    "лендинг",
+    "saas",
+    "саас",
+    "разработ",
+    "юрид",
+    "бухгалтер",
+    "маркет",
+    "ремонт",
+    "поставк",
+    "купл",
+    "продаж",
+    "заем",
+    "займ",
+    "nda",
+    "конфиденц",
+    "перевод",
+    "клининг",
+    "обуч",
+    "транспорт",
+)
+
 
 def build_reasoning_note(content: str) -> str:
     normalized = content.lower()
@@ -317,6 +354,24 @@ def build_service_type_clarification(content: str) -> str:
         "Чтобы подготовить договор корректно, уточните, пожалуйста, какие именно услуги оказываются.\n\n"
         "Например: юридические консультации, бухгалтерское сопровождение, разработка ПО, маркетинг, "
         "ремонт, клининг или другие услуги."
+    )
+
+
+def needs_broad_contract_clarification(content: str) -> bool:
+    normalized = " ".join(content.lower().replace("ё", "е").split())
+    if len(normalized) <= 18 and "договор" in normalized:
+        return True
+    if not any(pattern in normalized for pattern in BROAD_CONTRACT_PATTERNS):
+        return False
+    return not any(marker in normalized for marker in CONCRETE_CONTRACT_MARKERS)
+
+
+def build_broad_contract_clarification() -> str:
+    return (
+        "Уточните, пожалуйста, какой именно договор нужен и для какой ситуации.\n\n"
+        "Напишите одной фразой: предмет договора, кто стороны и что должно быть результатом. "
+        "Например: «договор подряда на ремонт квартиры», «договор поставки оборудования», "
+        "«договор оказания маркетинговых услуг для ИП»."
     )
 
 
@@ -1275,6 +1330,24 @@ async def send_message(
                     "• Вижу, что запрос относится к договору оказания услуг.\n"
                     "• Вид услуги указан неясно или похож на опечатку.\n"
                     "• Сначала уточняю предмет договора, чтобы не подготовить неверный документ."
+                ),
+            )
+        )
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {"content": answer, "contract_saved": False, "reasoning": ""}
+
+    if latest_version_before_answer is None and not is_contract_update and needs_broad_contract_clarification(payload.content):
+        answer = build_broad_contract_clarification()
+        db.add(
+            Message(
+                session_id=session.id,
+                role=MessageRole.system,
+                content=(
+                    "Что я делаю:\n"
+                    "• Вижу, что запрос слишком общий.\n"
+                    "• Сначала уточняю предмет договора и роли сторон.\n"
+                    "• После уточнения подготовлю проект без лишних догадок."
                 ),
             )
         )

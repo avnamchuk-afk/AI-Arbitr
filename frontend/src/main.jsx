@@ -41,6 +41,48 @@ function needsServiceClarification(content) {
   return !knownMarkers.some((marker) => normalized.includes(marker));
 }
 
+function needsBroadContractClarification(content) {
+  const normalized = content.toLowerCase().replaceAll("ё", "е").trim().replace(/\s+/g, " ");
+  if (normalized.length <= 18 && normalized.includes("договор")) return true;
+  const broadPatterns = [
+    "сделай договор",
+    "составь договор",
+    "подготовь договор",
+    "нужен договор",
+    "договор с подрядчиком",
+    "договор на сотрудничество",
+    "договор о сотрудничестве",
+  ];
+  if (!broadPatterns.some((pattern) => normalized.includes(pattern))) return false;
+  const concreteMarkers = [
+    "найм",
+    "аренд",
+    "квартир",
+    "жил",
+    "сайт",
+    "лендинг",
+    "saas",
+    "саас",
+    "разработ",
+    "юрид",
+    "бухгалтер",
+    "маркет",
+    "ремонт",
+    "поставк",
+    "купл",
+    "продаж",
+    "заем",
+    "займ",
+    "nda",
+    "конфиденц",
+    "перевод",
+    "клининг",
+    "обуч",
+    "транспорт",
+  ];
+  return !concreteMarkers.some((marker) => normalized.includes(marker));
+}
+
 function getThinkingSteps(content) {
   const normalized = content.toLowerCase();
   if (needsServiceClarification(content)) {
@@ -48,6 +90,13 @@ function getThinkingSteps(content) {
       "Вижу запрос на договор оказания услуг.",
       "Проверяю, понятно ли указан предмет договора.",
       "Похоже, вид услуги нужно уточнить перед генерацией.",
+    ];
+  }
+  if (needsBroadContractClarification(content)) {
+    return [
+      "Вижу, что запрос слишком общий.",
+      "Уточняю предмет договора и роли сторон.",
+      "После уточнения подготовлю проект без лишних догадок.",
     ];
   }
   if (normalized.includes("найм") || normalized.includes("квартир") || normalized.includes("жил")) {
