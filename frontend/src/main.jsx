@@ -685,24 +685,38 @@ function App() {
       <aside className={sidebarOpen ? "sidebar open" : "sidebar"}>
         <div className="account">
           <strong>{isGuest ? "Гостевой режим" : email}</strong>
-          <button
-            onClick={() => {
-              fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" })
-                .then(() => fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" }))
-                .then((res) => res.json())
-                .then((user) => {
-                  setEmail(user.email || "");
-                  setUserId(user.id);
-                  setIsGuest(true);
-                  setAuthed(true);
-                  setSessions([]);
-                  setCurrentSession(null);
-                  loadSessions();
-                });
-            }}
-          >
-            <LogOut size={16} /> Выход
-          </button>
+          {isGuest ? (
+            <button
+              onClick={() => {
+                setAuthMode("login");
+                setAuthPromptTitle("Вход");
+                setAuthPromptCopy("Укажите email, чтобы войти, сохранить историю и продолжить работу с договорами.");
+                setLoginNotice("");
+                setAuthPromptOpen(true);
+              }}
+            >
+              Вход
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" })
+                  .then(() => fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" }))
+                  .then((res) => res.json())
+                  .then((user) => {
+                    setEmail(user.email || "");
+                    setUserId(user.id);
+                    setIsGuest(true);
+                    setAuthed(true);
+                    setSessions([]);
+                    setCurrentSession(null);
+                    loadSessions();
+                  });
+              }}
+            >
+              <LogOut size={16} /> Выход
+            </button>
+          )}
         </div>
         <button className="new-contract" onClick={createSession}>
           <Plus size={18} /> Новый договор
