@@ -27,7 +27,7 @@ from app.models.entities import (
     now_utc,
 )
 from app.services.auth import generate_raw_token, hash_token, make_session_cookie, read_session_cookie, token_expires_at
-from app.services.contract_templates import build_housing_rent_contract
+from app.services.contract_templates import build_housing_rent_contract, build_website_development_contract
 from app.services.email import send_contract_invite, send_contract_signed_notice, send_magic_link, smtp_is_configured
 from app.services.pdf import build_contract_pdf
 from app.services.privacy import contains_passport_like_data
@@ -298,6 +298,15 @@ def is_housing_rent_request(content: str) -> bool:
     )
     return any(marker in normalized for marker in housing_markers) and any(
         marker in normalized for marker in rent_markers
+    )
+
+
+def is_website_development_request(content: str) -> bool:
+    normalized = content.lower().replace("ё", "е")
+    website_markers = ("сайт", "лендинг", "landing", "веб", "интернет-магазин")
+    work_markers = ("создан", "разработ", "сдел", "подряд", "договор")
+    return any(marker in normalized for marker in website_markers) and any(
+        marker in normalized for marker in work_markers
     )
 
 
@@ -1344,6 +1353,10 @@ async def send_message(
         else:
             if is_housing_rent_request(payload.content):
                 answer = build_housing_rent_contract(settings.app_base_url)
+                prompt = None
+                used_fixed_template = True
+            elif is_website_development_request(payload.content):
+                answer = build_website_development_contract()
                 prompt = None
                 used_fixed_template = True
             else:
