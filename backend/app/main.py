@@ -271,6 +271,15 @@ def build_reasoning_note(content: str) -> str:
 
 def is_housing_rent_request(content: str) -> bool:
     normalized = content.lower().replace("ё", "е")
+    direct_housing_rent_phrases = (
+        "договор найма",
+        "найм жилого",
+        "найма жилого",
+        "наймодатель",
+        "наниматель",
+    )
+    if any(phrase in normalized for phrase in direct_housing_rent_phrases):
+        return True
     housing_markers = (
         "жиль",
         "жил",
