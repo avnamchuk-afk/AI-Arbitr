@@ -27,7 +27,7 @@ from app.models.entities import (
     now_utc,
 )
 from app.services.auth import generate_raw_token, hash_token, make_session_cookie, read_session_cookie, token_expires_at
-from app.services.contract_templates import build_housing_rent_contract, build_website_development_contract
+from app.services.contract_templates import AI_ARBITR_DISPUTE_SECTION, build_housing_rent_contract, build_website_development_contract
 from app.services.email import send_contract_invite, send_contract_signed_notice, send_magic_link, smtp_is_configured
 from app.services.pdf import build_contract_pdf
 from app.services.privacy import contains_passport_like_data
@@ -445,6 +445,32 @@ def clean_contract_markdown(contract_text: str) -> str:
     cleaned = re.sub(r"^\s{0,3}#{1,6}\s*", "", contract_text, flags=re.MULTILINE)
     cleaned = cleaned.replace("**", "")
     return cleaned.strip()
+
+
+def ensure_ai_arbitr_dispute_section(contract_text: str) -> str:
+    if "8.2.8. Настоящий порядок не ограничивает" in contract_text and "8.4. Стороны подтверждают" in contract_text:
+        return contract_text
+
+    text = re.sub(
+        r"\n?8\.\s*ПОРЯДОК РАЗРЕШЕНИЯ СПОРОВ\s*\n.*?(?=\n9\.\s)",
+        f"\n{AI_ARBITR_DISPUTE_SECTION}\n\n",
+        contract_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if "8.2.8. Настоящий порядок не ограничивает" in text and "8.4. Стороны подтверждают" in text:
+        return text.strip()
+
+    text = re.sub(r"^.*AI-arbitr.*(?:\n|$)", "", text, flags=re.IGNORECASE | re.MULTILINE)
+    insertion = f"\n\n{AI_ARBITR_DISPUTE_SECTION}\n\n"
+    requisites_match = re.search(r"\n\d+\.\s*(?:РЕКВИЗИТЫ|АДРЕСА|ПОДПИСИ)", text, flags=re.IGNORECASE)
+    if requisites_match:
+        return (text[:requisites_match.start()] + insertion + text[requisites_match.start():]).strip()
+
+    concluding_match = re.search(r"\n\d+\.\s*(?:ЗАКЛЮЧИТЕЛЬНЫЕ|СРОК ДЕЙСТВИЯ|ИЗМЕНЕНИЕ)", text, flags=re.IGNORECASE)
+    if concluding_match:
+        return (text[:concluding_match.start()] + insertion + text[concluding_match.start():]).strip()
+
+    return (text.rstrip() + insertion).strip()
 
 
 def build_question_reasoning_note(question: str) -> str:
@@ -1139,7 +1165,7 @@ def ensure_demo_session(db: Session, user: User) -> None:
 
 
 def save_contract_version(db: Session, session: ContractSession, content: str) -> ContractVersion:
-    content = clean_contract_markdown(content)
+    content = ensure_ai_arbitr_dispute_section(clean_contract_markdown(content))
     version_count = db.query(ContractVersion).filter(ContractVersion.session_id == session.id).count()
     version_number = version_count + 1
     version = ContractVersion(
@@ -1550,6 +1576,8 @@ async def send_message(
             answer = normalize_contract_legal_title(answer, payload.content)
         if should_save_contract_version or looks_like_contract_text(answer):
             answer = clean_contract_markdown(answer)
+        if should_save_contract_version:
+            answer = ensure_ai_arbitr_dispute_section(answer)
         if session.status == SessionStatus.finalized and is_dispute:
             answer = (
                 answer
