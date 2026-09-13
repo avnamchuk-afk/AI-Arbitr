@@ -232,7 +232,12 @@ function App() {
   async function loadSessions() {
     try {
       const response = await fetch(`${API_URL}/sessions`, { credentials: "include" });
-      setSessions(await response.json());
+      if (!response.ok) {
+        setSessions([]);
+        return;
+      }
+      const data = await response.json();
+      setSessions(Array.isArray(data) ? data : []);
     } catch {
       setSessions([]);
     }

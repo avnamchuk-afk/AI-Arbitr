@@ -567,12 +567,13 @@ def health():
 
 
 def set_auth_cookie(response: Response, user: User) -> None:
+    use_secure_cookie = settings.app_base_url.startswith("https://")
     response.set_cookie(
         settings.session_cookie_name,
         make_session_cookie(str(user.id)),
         max_age=60 * 60 * 24 * 30,
         httponly=True,
-        secure=settings.app_env != "local",
+        secure=use_secure_cookie,
         samesite="lax",
     )
 
@@ -709,9 +710,10 @@ def auth_me(user: User = Depends(get_current_user)):
 
 @app.post("/auth/logout")
 def logout(response: Response):
+    use_secure_cookie = settings.app_base_url.startswith("https://")
     response.delete_cookie(
         settings.session_cookie_name,
-        secure=settings.app_env != "local",
+        secure=use_secure_cookie,
         httponly=True,
         samesite="lax",
     )
