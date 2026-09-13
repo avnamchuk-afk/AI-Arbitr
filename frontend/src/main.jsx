@@ -11,8 +11,45 @@ const DEMO_REVIEW_PASSPORT = "1111 111111";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function needsServiceClarification(content) {
+  const normalized = content.toLowerCase().replaceAll("ё", "е");
+  const serviceRequest = normalized.includes("услуг") || normalized.includes("оказан");
+  if (!serviceRequest) return false;
+  if (normalized.includes("болгар")) return true;
+  const knownMarkers = [
+    "юрид",
+    "консультац",
+    "бухгалтер",
+    "маркет",
+    "реклам",
+    "дизайн",
+    "разработ",
+    "сайт",
+    "saas",
+    "саас",
+    "it",
+    "ит",
+    "ремонт",
+    "клининг",
+    "перевод",
+    "обуч",
+    "медицин",
+    "транспорт",
+    "логист",
+    "охран",
+  ];
+  return !knownMarkers.some((marker) => normalized.includes(marker));
+}
+
 function getThinkingSteps(content) {
   const normalized = content.toLowerCase();
+  if (needsServiceClarification(content)) {
+    return [
+      "Вижу запрос на договор оказания услуг.",
+      "Проверяю, понятно ли указан предмет договора.",
+      "Похоже, вид услуги нужно уточнить перед генерацией.",
+    ];
+  }
   if (normalized.includes("найм") || normalized.includes("квартир") || normalized.includes("жил")) {
     return [
       "Понятно, делаем договор найма жилого помещения.",

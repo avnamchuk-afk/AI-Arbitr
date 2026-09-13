@@ -245,6 +245,30 @@ CONTRACT_UPDATE_PREFIX = "ДОПОЛНИТЬ ДОГОВОР:"
 PLACEHOLDER_RE = re.compile(r"\[([^\[\]]+)\]")
 MONEY_RE = re.compile(r"(\d[\d\s]*(?:[.,]\d+)?\s*(?:руб\.?|рублей))", re.IGNORECASE)
 
+KNOWN_SERVICE_MARKERS = (
+    "юрид",
+    "консультац",
+    "бухгалтер",
+    "маркет",
+    "реклам",
+    "дизайн",
+    "разработ",
+    "сайт",
+    "saas",
+    "саас",
+    "it",
+    "ит",
+    "ремонт",
+    "клининг",
+    "перевод",
+    "обуч",
+    "образоват",
+    "медицин",
+    "транспорт",
+    "логист",
+    "охран",
+)
+
 
 def build_reasoning_note(content: str) -> str:
     normalized = content.lower()
@@ -261,7 +285,7 @@ def build_reasoning_note(content: str) -> str:
         ]
     else:
         steps = [
-            "Понятно, готовлю проект договора по вашему запросу.",
+            "Проверяю, достаточно ли понятно описан вид договора.",
             "Проверяю применимые нормы ГК РФ и обязательные условия договора.",
             "Выделяю существенные условия, без которых договор может работать плохо.",
             "Добавляю обычные условия: порядок оплаты, сроки, приемка, ответственность, изменение и расторжение.",
@@ -269,6 +293,31 @@ def build_reasoning_note(content: str) -> str:
             "Генерирую первую версию договора.",
         ]
     return "Что я делаю:\n" + "\n".join(f"• {step}" for step in steps)
+
+
+def needs_service_type_clarification(content: str) -> bool:
+    normalized = content.lower().replace("ё", "е")
+    service_request = "услуг" in normalized or "оказан" in normalized
+    if not service_request:
+        return False
+    if "болгар" in normalized:
+        return True
+    return not any(marker in normalized for marker in KNOWN_SERVICE_MARKERS)
+
+
+def build_service_type_clarification(content: str) -> str:
+    if "болгар" in content.lower().replace("ё", "е"):
+        return (
+            "Похоже, в запросе есть опечатка: «болгарских услуг». "
+            "Уточните, пожалуйста, какие именно услуги вы имели в виду: бухгалтерские, юридические, "
+            "бытовые, строительные, IT-услуги или другие?\n\n"
+            "Например: «договор на оказание бухгалтерских услуг для ООО»."
+        )
+    return (
+        "Чтобы подготовить договор корректно, уточните, пожалуйста, какие именно услуги оказываются.\n\n"
+        "Например: юридические консультации, бухгалтерское сопровождение, разработка ПО, маркетинг, "
+        "ремонт, клининг или другие услуги."
+    )
 
 
 def is_housing_rent_request(content: str) -> bool:
@@ -1214,6 +1263,24 @@ async def send_message(
         session.title = infer_session_title(title_source)
     db.add(Message(session_id=session.id, role=MessageRole.user, content=payload.content))
     db.flush()
+
+    if latest_version_before_answer is None and not is_contract_update and needs_service_type_clarification(payload.content):
+        answer = build_service_type_clarification(payload.content)
+        db.add(
+            Message(
+                session_id=session.id,
+                role=MessageRole.system,
+                content=(
+                    "Что я делаю:\n"
+                    "• Вижу, что запрос относится к договору оказания услуг.\n"
+                    "• Вид услуги указан неясно или похож на опечатку.\n"
+                    "• Сначала уточняю предмет договора, чтобы не подготовить неверный документ."
+                ),
+            )
+        )
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {"content": answer, "contract_saved": False, "reasoning": ""}
 
     if session.status != SessionStatus.finalized and latest_version_before_answer is not None and not is_contract_update:
         placeholders = extract_placeholders(latest_version_before_answer.content)
