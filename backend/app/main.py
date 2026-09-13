@@ -27,6 +27,7 @@ from app.models.entities import (
     now_utc,
 )
 from app.services.auth import generate_raw_token, hash_token, make_session_cookie, read_session_cookie, token_expires_at
+from app.services.contract_templates import build_housing_rent_contract
 from app.services.email import send_contract_invite, send_magic_link, smtp_is_configured
 from app.services.pdf import build_contract_pdf
 from app.services.privacy import contains_passport_like_data
@@ -1243,20 +1244,25 @@ async def send_message(
                     },
                 ]
         else:
-            prompt = [
-                {"role": "system", "text": CONTRACT_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "text": (
-                        "Сгенерируй полный проект договора по следующему запросу. "
-                        "Ответ должен быть именно текстом договора, без предварительных пояснений.\n\n"
-                        f"Запрос пользователя:\n{payload.content}"
-                    ),
-                },
-            ]
-        answer = await ask_yandex_gpt(
-            prompt
-        )
+            if is_housing_rent_request(payload.content):
+                answer = build_housing_rent_contract(settings.app_base_url)
+                prompt = None
+            else:
+                prompt = [
+                    {"role": "system", "text": CONTRACT_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "text": (
+                            "Сгенерируй полный проект договора по следующему запросу. "
+                            "Ответ должен быть именно текстом договора, без предварительных пояснений.\n\n"
+                            f"Запрос пользователя:\n{payload.content}"
+                        ),
+                    },
+                ]
+        if prompt is not None:
+            answer = await ask_yandex_gpt(
+                prompt
+            )
         if latest_version_before_answer is None:
             answer = normalize_contract_legal_title(answer, payload.content)
         if is_contract_update:
