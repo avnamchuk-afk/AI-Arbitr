@@ -298,6 +298,7 @@ function App() {
   const [authPromptCopy, setAuthPromptCopy] = useState(
     "Укажите email, чтобы сохранить этот договор, получить ссылку для входа и отправить договор второй стороне."
   );
+  const [afterAuthAction, setAfterAuthAction] = useState("");
   const [reviewData, setReviewData] = useState(null);
   const [reviewForm, setReviewForm] = useState({
     fullName: DEMO_REVIEW_FULL_NAME,
@@ -453,7 +454,12 @@ function App() {
     event.preventDefault();
     setLoginNotice("");
     setDevLink("");
-    const endpoint = authMode === "register" ? "/auth/register" : "/auth/login";
+    const endpoint =
+      afterAuthAction === "invite" && isGuest && authMode === "register"
+        ? "/auth/quick-register"
+        : authMode === "register"
+          ? "/auth/register"
+          : "/auth/login";
     const payload =
       authMode === "register" ? { email, personal_data_accepted: accepted } : { email };
     const response = await fetch(`${API_URL}${endpoint}`, {
@@ -465,6 +471,18 @@ function App() {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       setLoginNotice(data.detail || "Не удалось отправить ссылку. Проверьте email и попробуйте еще раз.");
+      return;
+    }
+    if (endpoint === "/auth/quick-register") {
+      setEmail(data.email || email);
+      setUserId(data.id || userId);
+      setIsGuest(false);
+      setAuthed(true);
+      setAuthPromptOpen(false);
+      setAfterAuthAction("");
+      setLoginNotice("");
+      await sendInviteRequest();
+      loadSessions();
       return;
     }
     setLoginNotice(data.message);
@@ -629,15 +647,7 @@ function App() {
     }
   }
 
-  async function createInvite() {
-    if (isGuest) {
-      setAuthMode("register");
-      setAuthPromptTitle("Сохранить историю");
-      setAuthPromptCopy("Укажите email, чтобы сохранить этот договор, получить ссылку для входа и отправить договор второй стороне.");
-      setAuthPromptOpen(true);
-      setLoginNotice("Укажите email, чтобы сохранить сессию и отправить ссылку второй стороне.");
-      return;
-    }
+  async function sendInviteRequest() {
     const response = await fetch(`${API_URL}/sessions/${currentSession.id}/invite`, {
       method: "POST",
       credentials: "include",
@@ -652,6 +662,21 @@ function App() {
         ? "Ссылка на просмотр договора отправлена второй стороне на email."
         : "SMTP пока не настроен. Скопируйте ссылку просмотра и отправьте второй стороне вручную."
     );
+  }
+
+  async function createInvite() {
+    if (isGuest) {
+      setAuthMode("register");
+      setAfterAuthAction("invite");
+      setAuthPromptTitle("Сохранить и отправить");
+      setAuthPromptCopy(
+        "Укажите вашу почту. Если email новый, я сразу сохраню сессию и отправлю ссылку второй стороне. Если email уже зарегистрирован, понадобится вход по ссылке из письма."
+      );
+      setAuthPromptOpen(true);
+      setLoginNotice("");
+      return;
+    }
+    await sendInviteRequest();
   }
 
   function startQuestion() {
@@ -887,14 +912,21 @@ function App() {
               <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
               <span>Я согласен на обработку персональных данных</span>
             </label>
-            <button>Отправить ссылку для входа</button>
+            <button>{afterAuthAction === "invite" ? "Сохранить и отправить" : "Отправить ссылку для входа"}</button>
             {loginNotice && <p className="notice">{loginNotice}</p>}
             {devLink && (
               <a className="dev-link" href={devLink}>
                 Dev-вход без SMTP
               </a>
             )}
-            <button className="modal-secondary" type="button" onClick={() => setAuthPromptOpen(false)}>
+            <button
+              className="modal-secondary"
+              type="button"
+              onClick={() => {
+                setAuthPromptOpen(false);
+                setAfterAuthAction("");
+              }}
+            >
               Продолжить без отправки
             </button>
           </form>

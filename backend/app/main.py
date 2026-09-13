@@ -1015,6 +1015,35 @@ def register(
     return issue_magic_link(payload.email, db)
 
 
+@app.post("/auth/quick-register")
+def quick_register_guest(
+    payload: RegisterRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not payload.personal_data_accepted:
+        raise HTTPException(status_code=400, detail="Нужно согласие на обработку персональных данных")
+    if not is_guest_user(current_user):
+        return {"id": current_user.id, "email": current_user.email, "is_guest": False}
+
+    existing_user = db.query(User).filter(User.email == payload.email).one_or_none()
+    if existing_user is not None:
+        raise HTTPException(status_code=409, detail="Аккаунт с таким email уже есть. Войдите по ссылке из письма.")
+
+    current_user.email = payload.email
+    db.flush()
+    db.commit()
+    db.refresh(current_user)
+    set_auth_cookie(response, current_user)
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "is_guest": False,
+        "message": "Сессия сохранена. Продолжаю отправку ссылки второй стороне.",
+    }
+
+
 @app.post("/auth/login")
 def request_login_link(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).one_or_none()
