@@ -473,6 +473,47 @@ def ensure_ai_arbitr_dispute_section(contract_text: str) -> str:
     return (text.rstrip() + insertion).strip()
 
 
+def extract_proposed_norms(messages: list[Message]) -> list[str]:
+    norms: list[str] = []
+    seen = set()
+    for message in messages:
+        if message.role != MessageRole.assistant:
+            continue
+        content = message.content.strip()
+        marker = "Предлагаю такую редакцию нормы:"
+        if marker not in content:
+            continue
+        norm = content.split(marker, 1)[1].strip()
+        norm = norm.split("Добавить это условие в договор?", 1)[0].strip()
+        norm = re.sub(r"^\[Номер пункта\]\.\s*", "", norm).strip()
+        if not norm:
+            continue
+        signature = re.sub(r"\s+", " ", norm.lower())[:180]
+        if signature not in seen:
+            seen.add(signature)
+            norms.append(norm)
+    return norms
+
+
+def collect_pending_norms_into_contract(contract_text: str, messages: list[Message]) -> str:
+    norms = [
+        norm
+        for norm in extract_proposed_norms(messages)
+        if re.sub(r"\s+", " ", norm.lower())[:120] not in re.sub(r"\s+", " ", contract_text.lower())
+    ]
+    if not norms:
+        return contract_text
+
+    additional_section = "ДОПОЛНИТЕЛЬНЫЕ УСЛОВИЯ, СОГЛАСОВАННЫЕ В ХОДЕ ОБСУЖДЕНИЯ\n\n"
+    additional_section += "\n".join(f"[Номер пункта]. {norm}" for norm in norms)
+
+    dispute_index = contract_text.find("8. ПОРЯДОК РАЗРЕШЕНИЯ СПОРОВ")
+    if dispute_index >= 0:
+        return (contract_text[:dispute_index].rstrip() + "\n\n" + additional_section + "\n\n" + contract_text[dispute_index:]).strip()
+
+    return (contract_text.rstrip() + "\n\n" + additional_section).strip()
+
+
 def build_question_reasoning_note(question: str) -> str:
     return (
         "Что я делаю:\n"
@@ -1263,10 +1304,22 @@ def create_invite(
         session.invite_token = uuid.uuid4()
         db.commit()
         db.refresh(session)
+    latest_version = get_latest_version(db, session)
+    if latest_version is None:
+        raise HTTPException(status_code=400, detail="Нет версии договора для согласования")
+    messages = (
+        db.query(Message)
+        .filter(Message.session_id == session.id)
+        .order_by(Message.created_at.asc())
+        .all()
+    )
+    collected_contract = collect_pending_norms_into_contract(latest_version.content, messages)
+    if collected_contract != latest_version.content:
+        latest_version = save_contract_version(db, session, collected_contract)
+        db.flush()
     invite_link = f"{settings.app_base_url}/review/{session.invite_token}"
     pdf_link = f"{settings.api_base_url}/review/{session.invite_token}.pdf"
-    latest_version = get_latest_version(db, session)
-    version_number = latest_version.version_number if latest_version else 1
+    version_number = latest_version.version_number
     sent = False
     if payload and payload.email:
         invited_user = db.query(User).filter(User.email == str(payload.email)).one_or_none()
