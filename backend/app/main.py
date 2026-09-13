@@ -422,39 +422,83 @@ def find_sentence(contract_text: str, keywords: tuple[str, ...]) -> str:
     return "не указано"
 
 
+def first_placeholder_value(contract_text: str, names: tuple[str, ...]) -> str:
+    placeholders = {item.lower(): item for item in PLACEHOLDER_RE.findall(contract_text)}
+    for name in names:
+        value = placeholders.get(name.lower())
+        if value:
+            return f"[{value}]"
+    return ""
+
+
+def extract_money_or_placeholder(sentence: str, placeholder_names: tuple[str, ...] = ()) -> str:
+    money_match = MONEY_RE.search(sentence)
+    if money_match:
+        return money_match.group(1)
+    placeholder = first_placeholder_value(sentence, placeholder_names)
+    return placeholder or sentence
+
+
+def build_object_summary(contract_text: str) -> str:
+    normalized = contract_text.lower()
+    address = first_placeholder_value(contract_text, ("адрес жилого помещения", "адрес объекта"))
+    if "квартир" in normalized:
+        object_type = "квартира"
+    elif "комнат" in normalized:
+        object_type = "комната"
+    elif "жилой дом" in normalized or "дом" in normalized:
+        object_type = "жилой дом"
+    else:
+        object_type = "жилое помещение"
+
+    if address:
+        return f"{object_type}, {address}"
+
+    address_sentence = find_sentence(contract_text, ("адрес",))
+    if address_sentence != "не указано":
+        return address_sentence
+    return object_type
+
+
 def build_key_terms(contract_text: str) -> list[dict[str, str]]:
-    lines = [normalize_contract_line(line) for line in contract_text.splitlines()]
-    lines = [line for line in lines if line]
-    title = next((line for line in lines if "договор" in line.lower()), "Договор")
+    term_placeholder = first_placeholder_value(contract_text, ("дата окончания договора", "срок"))
+    term_value = f"до {term_placeholder}" if term_placeholder else find_sentence(contract_text, ("действует",))
 
-    object_value = find_sentence(contract_text, ("адрес",))
-    if object_value == "не указано":
-        object_value = find_sentence(contract_text, ("квартир",))
+    payment_sentence = find_sentence(contract_text, ("ежемесячная", "плата"))
+    payment_value = extract_money_or_placeholder(payment_sentence, ("сумма цифрами", "сумма"))
 
-    term_value = find_sentence(contract_text, ("срок",))
-    payment_sentence = find_sentence(contract_text, ("плата",))
-    payment_match = MONEY_RE.search(payment_sentence)
-    payment_value = payment_match.group(1) if payment_match else payment_sentence
+    utilities_sentence = find_sentence(contract_text, ("коммунальные", "платежи"))
+    if utilities_sentence != "не указано" and "показан" in utilities_sentence.lower():
+        utilities_value = "счетчики отдельно"
+    else:
+        utilities_value = "не указано"
 
-    deposit_value = find_sentence(contract_text, ("обеспеч", "плат"))
-    utilities_value = find_sentence(contract_text, ("коммун",))
-    if utilities_value == "не указано":
-        utilities_value = find_sentence(contract_text, ("жку",))
+    prolongation_sentence = find_sentence(contract_text, ("автоматически", "продлен"))
+    prolongation_value = "есть" if prolongation_sentence != "не указано" else "нет"
 
-    early_termination_value = find_sentence(contract_text, ("досроч",))
-    rent_increase_value = find_sentence(contract_text, ("повыш", "плат"))
-    if rent_increase_value == "не указано":
-        rent_increase_value = find_sentence(contract_text, ("измен", "плат"))
+    children_value = "можно с детьми"
+    pets_sentence = find_sentence(contract_text, ("домашних", "животных"))
+    if pets_sentence != "не указано" and "соглас" in pets_sentence.lower():
+        pets_value = "нельзя с животными без согласия"
+    elif pets_sentence != "не указано" and "не допуска" in pets_sentence.lower():
+        pets_value = "нельзя с животными"
+    else:
+        pets_value = "не указано"
+
+    deposit_sentence = find_sentence(contract_text, ("обеспечительный", "платеж"))
+    deposit_value = extract_money_or_placeholder(deposit_sentence, ("сумма обеспечительного платежа",))
+    if deposit_value != "не указано":
+        deposit_value = f"в размере {deposit_value}"
 
     return [
-        {"label": "Вид договора", "value": title},
-        {"label": "Объект", "value": object_value},
-        {"label": "Срок найма", "value": term_value},
-        {"label": "Плата в месяц", "value": payment_value},
+        {"label": "Объект", "value": build_object_summary(contract_text)},
+        {"label": "Оплата в месяц", "value": payment_value},
         {"label": "ЖКУ", "value": utilities_value},
-        {"label": "Обеспечительный платеж", "value": deposit_value},
-        {"label": "Досрочное прекращение", "value": early_termination_value},
-        {"label": "Повышение платы", "value": rent_increase_value},
+        {"label": "Срок", "value": term_value},
+        {"label": "Автопролонгация", "value": prolongation_value},
+        {"label": "Дети", "value": children_value},
+        {"label": "Животные", "value": pets_value},
+        {"label": "Депозит", "value": deposit_value},
     ]
 
 

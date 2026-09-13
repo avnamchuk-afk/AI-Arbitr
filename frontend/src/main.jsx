@@ -887,10 +887,7 @@ function App() {
                   <section className="signed-contract-card">
                     <div>
                       <span>Договор подписан</span>
-                      <strong>
-                        {(sessionDetail?.key_terms || []).find((term) => term.label === "Вид договора")?.value ||
-                          "Договор подписан сторонами"}
-                      </strong>
+                      <strong>Договор подписан сторонами</strong>
                       <p>Подписан сторонами путем согласования: {formatFinalizedDate(sessionDetail?.session || currentSession)}</p>
                     </div>
                     <div className="signed-actions">
