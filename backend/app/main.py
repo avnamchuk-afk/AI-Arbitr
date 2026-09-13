@@ -1042,6 +1042,17 @@ def create_invite(
     pdf_link = f"{settings.api_base_url}/review/{session.invite_token}.pdf"
     sent = False
     if payload and payload.email:
+        invited_user = db.query(User).filter(User.email == str(payload.email)).one_or_none()
+        if invited_user is None:
+            invited_user = User(email=str(payload.email))
+            db.add(invited_user)
+            db.flush()
+        party_2 = (
+            db.query(ContractParticipant)
+            .filter(ContractParticipant.session_id == session.id, ContractParticipant.role == ParticipantRole.party_2)
+            .one()
+        )
+        party_2.user_id = invited_user.id
         send_contract_invite(payload.email, invite_link, session.title, pdf_link)
         sent = smtp_is_configured()
         party_label = payload.party_name.strip() or str(payload.email)
@@ -1102,6 +1113,7 @@ def get_review_contract(invite_token: str, db: Session = Depends(get_db)):
         "contract": latest_version.content,
         "key_terms": build_key_terms(latest_version.content),
         "approved": party_2.approval_status == ApprovalStatus.approved,
+        "party_email": party_2.user.email if party_2.user else "",
         "finalized": session.status == SessionStatus.finalized,
         "download_token": session.download_token,
         "pdf_link": f"{settings.api_base_url}/review/{invite_token}.pdf",

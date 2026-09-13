@@ -189,6 +189,9 @@ function App() {
         return;
       }
       setReviewData(data);
+      if (data.party_email) {
+        setReviewForm((form) => ({ ...form, email: form.email || data.party_email }));
+      }
     } finally {
       setReviewLoading(false);
     }
