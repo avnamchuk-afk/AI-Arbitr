@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Check, Copy, Download, LogOut, Menu, Plus, Send, Trash2 } from "lucide-react";
+import { Check, Copy, Download, LogOut, Menu, Plus, Search, Send, Trash2 } from "lucide-react";
 import "./styles.css";
 
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
@@ -321,6 +321,7 @@ function App() {
   const [deleteCandidateId, setDeleteCandidateId] = useState("");
   const [chatMode, setChatMode] = useState("idle");
   const [sessionListMode, setSessionListMode] = useState("draft");
+  const [sessionSearch, setSessionSearch] = useState("");
   const [questionResolved, setQuestionResolved] = useState(false);
   const [authPromptTitle, setAuthPromptTitle] = useState("Сохранить историю");
   const [authPromptCopy, setAuthPromptCopy] = useState(
@@ -542,6 +543,7 @@ function App() {
     setChatMode("idle");
     setQuestionResolved(false);
     setSessionListMode("draft");
+    setSessionSearch("");
     setSessions([session, ...sessions]);
     setMessages([]);
     setSidebarOpen(false);
@@ -788,7 +790,21 @@ function App() {
     acc[filter.id] = sessions.filter((session) => getSessionBucket(session) === filter.id).length;
     return acc;
   }, {});
-  const visibleSessions = sessions.filter((session) => getSessionBucket(session) === sessionListMode);
+  const normalizedSessionSearch = sessionSearch.trim().toLowerCase();
+  const visibleSessions = sessions.filter((session) => {
+    if (getSessionBucket(session) !== sessionListMode) return false;
+    if (!normalizedSessionSearch) return true;
+    const searchableText = [
+      session.title,
+      session.party_2_email,
+      getSessionStatusLabel(session),
+      formatSessionTimestamp(session),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return searchableText.includes(normalizedSessionSearch);
+  });
   const partyTwoSigned = (sessionDetail?.participants || []).some(
     (participant) => participant.role === "party_2" && participant.approval_status === "approved"
   );
@@ -1056,6 +1072,14 @@ function App() {
         <button className="new-contract" onClick={createSession}>
           <Plus size={18} /> Новый договор
         </button>
+        <label className="session-search">
+          <Search size={15} />
+          <input
+            value={sessionSearch}
+            onChange={(event) => setSessionSearch(event.target.value)}
+            placeholder="Поиск по договорам"
+          />
+        </label>
         <div className="session-tabs" role="tablist" aria-label="Список договоров">
           {SESSION_FILTERS.map((filter) => (
             <button

@@ -609,12 +609,12 @@ button:hover {
 
 .session-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 6px;
 }
 
 .session-tabs button {
-  min-height: 34px;
+  min-height: 36px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--muted);
@@ -625,6 +625,33 @@ button:hover {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+}
+
+.session-search {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: rgb(255 255 255 / 44%);
+}
+
+.session-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+}
+
+.session-search input::placeholder {
+  color: var(--muted);
 }
 
 .session-tabs button.active {
