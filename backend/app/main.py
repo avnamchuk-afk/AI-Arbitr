@@ -791,7 +791,7 @@ def delete_session(session_id: str, user: User = Depends(get_current_user), db: 
     db.query(Message).filter(Message.session_id == session.id).delete(synchronize_session=False)
     db.query(ContractVersion).filter(ContractVersion.session_id == session.id).delete(synchronize_session=False)
     db.query(ContractParticipant).filter(ContractParticipant.session_id == session.id).delete(synchronize_session=False)
-    db.delete(session)
+    db.query(ContractSession).filter(ContractSession.id == session.id).delete(synchronize_session=False)
     db.commit()
     return {"message": "deleted"}
 
