@@ -720,6 +720,30 @@ async def summarize_added_contract_norm(updated_contract: str, requested_change:
     return await ask_yandex_gpt(prompt)
 
 
+async def propose_contract_norm(contract_text: str, dialogue: str) -> str:
+    prompt = [
+        {
+            "role": "system",
+            "text": (
+                "Ты договорный юрист. Пользователь согласился включить в договор положение, "
+                "которое ты только что предложил после ответа на вопрос. "
+                "Не выводи весь договор и не говори, что договор уже изменен. "
+                "Сформулируй одну готовую норму для включения в договор: с номером пункта-заглушкой "
+                "и юридически аккуратным текстом. После нормы коротко спроси: "
+                "«Добавить это условие в договор?»"
+            ),
+        },
+        {
+            "role": "user",
+            "text": (
+                f"Текущая версия договора:\n{contract_text}\n\n"
+                f"Последний диалог:\n{dialogue}"
+            ),
+        },
+    ]
+    return await ask_yandex_gpt(prompt)
+
+
 def infer_session_title(content: str) -> str:
     if is_housing_rent_request(content):
         return "Найм жилья"
@@ -1351,6 +1375,27 @@ async def send_message(
                 ),
             )
         )
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {"content": answer, "contract_saved": False, "reasoning": ""}
+
+    if (
+        latest_version_before_answer is not None
+        and not is_contract_update
+        and is_affirmative_message(payload.content)
+        and "хотите включить" in last_assistant_message(prior_messages).lower()
+    ):
+        recent_dialogue = format_recent_dialogue(prior_messages)
+        try:
+            answer = await propose_contract_norm(latest_version_before_answer.content, recent_dialogue)
+        except YandexGPTError:
+            answer = (
+                "Да, это условие стоит добавить. Предлагаю такую редакцию:\n\n"
+                "[Номер пункта]. Стороны согласовали, что соответствующее действие допускается только "
+                "по предварительному письменному соглашению сторон с указанием срока, порядка уведомления "
+                "и последствий нарушения.\n\n"
+                "Добавить это условие в договор?"
+            )
         db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
         db.commit()
         return {"content": answer, "contract_saved": False, "reasoning": ""}

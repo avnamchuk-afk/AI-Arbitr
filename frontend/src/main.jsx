@@ -1100,10 +1100,12 @@ function App() {
                       </div>
                     ) : questionResolved ? (
                       <div className="quick-flow">
-                        <strong>Все понятно?</strong>
+                        <strong>Что дальше?</strong>
                         <div className="action-row">
-                          <button onClick={() => setQuestionResolved(false)}>Да</button>
-                          <button onClick={startQuestion}>Нет, задать еще вопрос</button>
+                          <button onClick={startAddition}>Дополнить новым условием</button>
+                          <button onClick={startAgreement}>
+                            <Check size={16} /> Согласовать версию
+                          </button>
                         </div>
                       </div>
                     ) : chatMode === "question" ? (
