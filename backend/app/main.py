@@ -1171,6 +1171,7 @@ async def send_message(
     try:
         should_save_contract_version = session.status != SessionStatus.finalized
         display_answer: str | None = None
+        used_fixed_template = False
         if session.status == SessionStatus.finalized and is_dispute:
             final_version = get_final_version(db, session)
             if final_version is None:
@@ -1247,6 +1248,7 @@ async def send_message(
             if is_housing_rent_request(payload.content):
                 answer = build_housing_rent_contract(settings.app_base_url)
                 prompt = None
+                used_fixed_template = True
             else:
                 prompt = [
                     {"role": "system", "text": CONTRACT_SYSTEM_PROMPT},
@@ -1263,7 +1265,7 @@ async def send_message(
             answer = await ask_yandex_gpt(
                 prompt
             )
-        if latest_version_before_answer is None:
+        if latest_version_before_answer is None and not used_fixed_template:
             answer = normalize_contract_legal_title(answer, payload.content)
         if is_contract_update:
             requested_change = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
