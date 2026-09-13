@@ -74,6 +74,7 @@ class ContractSession(Base):
     title: Mapped[str] = mapped_column(String(120), default="Новый договор")
     status: Mapped[SessionStatus] = mapped_column(Enum(SessionStatus), default=SessionStatus.draft)
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     download_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), unique=True, nullable=True)
     invite_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), unique=True, nullable=True)

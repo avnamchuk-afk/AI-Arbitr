@@ -189,14 +189,16 @@ function getHistoryEvent(message) {
 
 const SESSION_FILTERS = [
   { id: "draft", label: "Черновики" },
-  { id: "sent", label: "Направлены" },
+  { id: "sent", label: "Исходящие" },
   { id: "incoming", label: "Входящие" },
-  { id: "my-signature", label: "Моя подпись" },
-  { id: "active", label: "Исполняются" },
-  { id: "closed", label: "Закрытые" },
+  { id: "my-signature", label: "На подпись" },
+  { id: "active", label: "Действующие" },
+  { id: "closed", label: "Архив" },
+  { id: "deleted", label: "Удаленные" },
 ];
 
 function getSessionBucket(session) {
+  if (session.is_deleted) return "deleted";
   if (session.is_completed) return "closed";
   if (session.status === "finalized") return "active";
   if (session.my_role === "party_2") return "incoming";
@@ -211,8 +213,9 @@ function getSessionStatusLabel(session) {
   if (bucket === "sent") return "На согласовании";
   if (bucket === "incoming") return "Входящий";
   if (bucket === "my-signature") return "Ждет моей подписи";
-  if (bucket === "active") return "Исполняется";
-  return "Закрыт";
+  if (bucket === "active") return "Действует";
+  if (bucket === "deleted") return "Удален";
+  return "В архиве";
 }
 
 function getContractContext(session, detail) {
@@ -566,7 +569,7 @@ function App() {
       return;
     }
 
-    setSessions((items) => items.filter((item) => item.id !== session.id));
+    setSessions((items) => items.map((item) => (item.id === session.id ? { ...item, is_deleted: true } : item)));
     setDeleteCandidateId("");
     loadSessions();
     if (currentSession?.id === session.id) {
@@ -1131,7 +1134,7 @@ function App() {
                             {session.party_2_email ? ` · ${session.party_2_email}` : ""}
                           </small>
                         </button>
-                        {session.status === "finalized" ? null : deleteCandidateId === session.id ? (
+                        {session.status === "finalized" || session.is_deleted ? null : deleteCandidateId === session.id ? (
                           <div className="delete-confirm">
                             <button className="delete-yes" onClick={(event) => deleteSession(event, session)}>
                               Удалить

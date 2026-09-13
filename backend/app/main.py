@@ -55,10 +55,16 @@ def ensure_runtime_schema() -> None:
             connection.execute(
                 text("ALTER TABLE users ADD COLUMN IF NOT EXISTS trusted_login_count INTEGER NOT NULL DEFAULT 0")
             )
+            connection.execute(
+                text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE")
+            )
         elif engine.dialect.name == "sqlite":
-            columns = connection.execute(text("PRAGMA table_info(users)")).fetchall()
-            if not any(column[1] == "trusted_login_count" for column in columns):
+            user_columns = connection.execute(text("PRAGMA table_info(users)")).fetchall()
+            if not any(column[1] == "trusted_login_count" for column in user_columns):
                 connection.execute(text("ALTER TABLE users ADD COLUMN trusted_login_count INTEGER NOT NULL DEFAULT 0"))
+            session_columns = connection.execute(text("PRAGMA table_info(sessions)")).fetchall()
+            if not any(column[1] == "is_deleted" for column in session_columns):
+                connection.execute(text("ALTER TABLE sessions ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT 0"))
 
 
 ensure_runtime_schema()
@@ -924,19 +930,23 @@ async def propose_contract_norm(contract_text: str, last_answer: str, dialogue: 
 
 def infer_session_title(content: str) -> str:
     if is_housing_rent_request(content):
-        return "Найм жилья"
+        return "Договор найма"
 
     normalized = content.lower()
     title_rules = [
-        (("найм", "квартир", "жил", "жиль"), "Найм жилья"),
-        (("аренд",), "Аренда"),
-        (("лендинг", "сайт", "веб", "landing"), "Лендинг"),
-        (("юруслуг", "юридическ", "консультац", "претензи"), "Юруслуги"),
-        (("оказан", "услуг"), "Услуги"),
-        (("подряд", "ремонт", "строитель"), "Подряд"),
-        (("купл", "продаж", "поставк"), "Купля-продажа"),
-        (("заем", "займ", "долг"), "Заем"),
+        (("saas", "саас", "сaas", "saaс"), "Договор SaaS"),
+        (("найм", "квартир", "жил", "жиль"), "Договор найма"),
+        (("аренд",), "Договор аренды"),
+        (("лендинг", "landing"), "Договор на лендинг"),
+        (("сайт", "веб"), "Договор на сайт"),
+        (("клининг", "уборк"), "Договор клининга"),
+        (("юруслуг", "юридическ", "консультац", "претензи"), "Договор юруслуг"),
+        (("подряд", "ремонт", "строитель"), "Договор подряда"),
+        (("поставк",), "Договор поставки"),
+        (("купл", "продаж"), "Договор купли-продажи"),
+        (("заем", "займ", "долг"), "Договор займа"),
         (("ндаш", "nda", "конфиденциаль"), "NDA"),
+        (("оказан", "услуг"), "Договор услуг"),
     ]
     for keywords, title in title_rules:
         if any(keyword in normalized for keyword in keywords):
@@ -1351,10 +1361,7 @@ def delete_session(session_id: str, user: User = Depends(get_current_user), db: 
     ):
         raise HTTPException(status_code=400, detail="Подписанные договоры защищены от удаления")
 
-    db.query(Message).filter(Message.session_id == session.id).delete(synchronize_session=False)
-    db.query(ContractVersion).filter(ContractVersion.session_id == session.id).delete(synchronize_session=False)
-    db.query(ContractParticipant).filter(ContractParticipant.session_id == session.id).delete(synchronize_session=False)
-    db.query(ContractSession).filter(ContractSession.id == session.id).delete(synchronize_session=False)
+    session.is_deleted = True
     db.commit()
     return {"message": "deleted"}
 
@@ -1424,6 +1431,7 @@ def serialize_session_summary(db: Session, session: ContractSession, user: User)
         "title": session.title,
         "status": session.status,
         "is_completed": completed_event_exists,
+        "is_deleted": session.is_deleted,
         "finalized_at": session.finalized_at,
         "download_token": session.download_token,
         "invite_token": session.invite_token,
