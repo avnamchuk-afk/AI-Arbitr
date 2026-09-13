@@ -84,7 +84,7 @@ GUEST_EMAIL_SUFFIX = "@guest.ai-arbitr.local"
 DEMO_SESSION_TITLE = "пример"
 LEGACY_DEMO_SESSION_TITLE = "Пример: договор на лендинг"
 DEMO_USER_PROMPT = "Составь договор найма"
-DEMO_REASONING_NOTE = """Что делает Арби:
+DEMO_REASONING_NOTE = """Что я делаю:
 • Понятно, делаем договор найма жилого помещения.
 • Проверяю применимые нормы ГК РФ о найме жилого помещения.
 • Существенные условия:
@@ -268,7 +268,7 @@ def build_reasoning_note(content: str) -> str:
             "Учитываю типовые спорные места и формулирую условия понятным языком.",
             "Генерирую первую версию договора.",
         ]
-    return "Что делает Арби:\n" + "\n".join(f"• {step}" for step in steps)
+    return "Что я делаю:\n" + "\n".join(f"• {step}" for step in steps)
 
 
 def is_housing_rent_request(content: str) -> bool:
@@ -345,7 +345,7 @@ def clean_contract_markdown(contract_text: str) -> str:
 
 def build_question_reasoning_note(question: str) -> str:
     return (
-        "Что делает Арби:\n"
+        "Что я делаю:\n"
         "• Вопрос понятен.\n"
         "• Проверяю его по текущей редакции договора.\n"
         "• Сверяю ответ с обычной практикой и нормами ГК РФ.\n"
@@ -355,7 +355,7 @@ def build_question_reasoning_note(question: str) -> str:
 
 def build_update_reasoning_note(change: str) -> str:
     return (
-        "Что делает Арби:\n"
+        "Что я делаю:\n"
         "• Нужно добавить новое условие в договор.\n"
         "• Проверяю, не противоречит ли оно ГК РФ и логике договора.\n"
         "• Ищу раздел договора, куда его правильно включить.\n"
@@ -996,7 +996,7 @@ def ensure_demo_session(db: Session, user: User) -> None:
             role=MessageRole.assistant,
             content=(
                 "Если по примеру все понятно, следующий шаг в реальном договоре — указать имя второй стороны "
-                "и email. AI-Арбитр подготовит ссылку для согласования, по которой вторая сторона сможет "
+                "и email. Я подготовлю ссылку для согласования, по которой вторая сторона сможет "
                 "принять версию или предложить правки."
             ),
         )

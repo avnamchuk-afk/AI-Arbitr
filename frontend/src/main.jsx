@@ -36,7 +36,7 @@ function getThinkingSteps(content) {
 }
 
 function buildReasoningNote(steps) {
-  return `Что делает Арби:\n${steps.map((step) => `• ${step}`).join("\n")}`;
+  return `Что я делаю:\n${steps.map((step) => `• ${step}`).join("\n")}`;
 }
 
 function formatSessionTimestamp(session) {
@@ -403,7 +403,7 @@ function App() {
           ? [
               "Понял, открываем спор по финализированному договору.",
               "Проверяю условия договора и историю согласования.",
-              "Формирую позицию AI-Арбитра.",
+              "Формирую позицию по спору.",
             ]
           : getThinkingSteps(rawContent);
     setDraft("");
@@ -435,7 +435,7 @@ function App() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.detail || "Не удалось получить ответ Арби. Попробуйте отправить запрос еще раз.");
+        throw new Error(data.detail || "Не удалось получить ответ. Попробуйте отправить запрос еще раз.");
       }
       if (thinkingTimer) window.clearInterval(thinkingTimer);
       setThinkingStep(thinkingSteps[thinkingSteps.length - 1]);
@@ -463,7 +463,7 @@ function App() {
           role: "assistant",
           content:
             error.message ||
-            "Не удалось получить ответ Арби. Попробуйте отправить запрос еще раз.",
+            "Не удалось получить ответ. Попробуйте отправить запрос еще раз.",
         },
       ]);
     } finally {
@@ -771,7 +771,7 @@ function App() {
             <ul>
               <li>Составьте договор найма жилого помещения.</li>
               <li>Проверьте карточку ключевых условий и текст договора.</li>
-              <li>Задайте вопросы Арби или добавьте новое условие.</li>
+              <li>Задайте мне вопросы или добавьте новое условие.</li>
               <li>Отправьте ссылку второй стороне на email.</li>
               <li>Вторая сторона подписывает договор по ссылке.</li>
               <li>Первая сторона подписывает договор в своем чате.</li>
@@ -937,13 +937,13 @@ function App() {
                 {thinking && (
                   <article className="message assistant thinking">
                     <div className="thinking-head">
-                      <span>Арби готовит ответ</span>
+                      <span>Я готовлю ответ</span>
                       <strong>{thinkingProgress}%</strong>
                     </div>
                     <div className="thinking-bar" aria-hidden="true">
                       <i style={{ width: `${thinkingProgress}%` }} />
                     </div>
-                    <p>{thinkingStep || "Арби думает..."}</p>
+                    <p>{thinkingStep || "Я думаю..."}</p>
                   </article>
                 )}
                 {hasContractVersion && !isFinalized && (
@@ -1039,7 +1039,7 @@ function App() {
                     </div>
                     {chatMode === "dispute" && (
                       <p className="panel-hint">
-                        Опишите ситуацию. Я проверю условия договора, историю согласования и подготовлю позицию AI-Арбитра.
+                        Опишите ситуацию. Я проверю условия договора, историю согласования и подготовлю позицию по спору.
                       </p>
                     )}
                   </section>
