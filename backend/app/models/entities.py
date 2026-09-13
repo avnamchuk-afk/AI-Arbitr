@@ -43,6 +43,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    trusted_login_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class AuthToken(Base):

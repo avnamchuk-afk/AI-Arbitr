@@ -7,7 +7,7 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_cors_origins, settings
@@ -35,6 +35,21 @@ from app.services.prompts import CONTRACT_SYSTEM_PROMPT, SIMPLE_CONTRACT_SYSTEM_
 from app.services.yandex_gpt import YandexGPTError, ask_yandex_gpt
 
 Base.metadata.create_all(bind=engine)
+
+
+def ensure_runtime_schema() -> None:
+    with engine.begin() as connection:
+        if engine.dialect.name == "postgresql":
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN IF NOT EXISTS trusted_login_count INTEGER NOT NULL DEFAULT 0")
+            )
+        elif engine.dialect.name == "sqlite":
+            columns = connection.execute(text("PRAGMA table_info(users)")).fetchall()
+            if not any(column[1] == "trusted_login_count" for column in columns):
+                connection.execute(text("ALTER TABLE users ADD COLUMN trusted_login_count INTEGER NOT NULL DEFAULT 0"))
+
+
+ensure_runtime_schema()
 
 app = FastAPI(title="AI-Arbitr API")
 
@@ -935,6 +950,16 @@ def set_auth_cookie(response: Response, user: User) -> None:
     )
 
 
+def clear_auth_cookie(response: Response) -> None:
+    use_secure_cookie = settings.app_base_url.startswith("https://")
+    response.delete_cookie(
+        settings.session_cookie_name,
+        secure=use_secure_cookie,
+        httponly=True,
+        samesite="lax",
+    )
+
+
 def get_current_user(
     db: Session = Depends(get_db),
     session_cookie: str | None = Cookie(default=None, alias=settings.session_cookie_name),
@@ -1032,6 +1057,7 @@ def quick_register_guest(
         raise HTTPException(status_code=409, detail="Аккаунт с таким email уже есть. Войдите по ссылке из письма.")
 
     current_user.email = payload.email
+    current_user.trusted_login_count = 0
     db.flush()
     db.commit()
     db.refresh(current_user)
@@ -1080,6 +1106,7 @@ def verify_magic_link(token: str, db: Session = Depends(get_db)):
         db.flush()
 
     user.last_login_at = now_utc()
+    user.trusted_login_count = 0
     auth_token.used = True
     ensure_demo_session(db, user)
     db.commit()
@@ -1090,19 +1117,32 @@ def verify_magic_link(token: str, db: Session = Depends(get_db)):
 
 
 @app.get("/auth/me")
-def auth_me(user: User = Depends(get_current_user)):
+def auth_me(
+    response: Response,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not is_guest_user(user):
+        user.trusted_login_count = (user.trusted_login_count or 0) + 1
+        if user.trusted_login_count >= 10:
+            user.trusted_login_count = 0
+            db.commit()
+            clear_auth_cookie(response)
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "magic_link_required",
+                    "email": user.email,
+                    "message": "Для безопасности подтвердите вход по ссылке из письма.",
+                },
+            )
+        db.commit()
     return {"id": user.id, "email": "" if is_guest_user(user) else user.email, "is_guest": is_guest_user(user)}
 
 
 @app.post("/auth/logout")
 def logout(response: Response):
-    use_secure_cookie = settings.app_base_url.startswith("https://")
-    response.delete_cookie(
-        settings.session_cookie_name,
-        secure=use_secure_cookie,
-        httponly=True,
-        samesite="lax",
-    )
+    clear_auth_cookie(response)
     return {"message": "ok"}
 
 

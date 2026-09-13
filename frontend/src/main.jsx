@@ -317,29 +317,37 @@ function App() {
       setAuthReady(true);
       return;
     }
-    fetch(`${API_URL}/auth/me`, { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) throw new Error("not authed");
-        return res.json();
-      })
-      .then((user) => {
-        setEmail(user.email);
-        setUserId(user.id);
-        setIsGuest(Boolean(user.is_guest));
+    async function bootstrapAuth() {
+      try {
+        const response = await fetch(`${API_URL}/auth/me`, { credentials: "include" });
+        const data = await response.json().catch(() => ({}));
+        if (response.ok) {
+          setEmail(data.email);
+          setUserId(data.id);
+          setIsGuest(Boolean(data.is_guest));
+          setAuthed(true);
+          return;
+        }
+        if (data.detail?.code === "magic_link_required") {
+          setEmail(data.detail.email || "");
+          setAuthMode("login");
+          setLoginNotice(data.detail.message || "Для безопасности подтвердите вход по ссылке из письма.");
+          setAuthed(false);
+          return;
+        }
+        const guestResponse = await fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" });
+        const guest = await guestResponse.json();
+        setEmail(guest.email || "");
+        setUserId(guest.id);
+        setIsGuest(true);
         setAuthed(true);
-      })
-      .catch(() =>
-        fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" })
-          .then((res) => res.json())
-          .then((user) => {
-            setEmail(user.email || "");
-            setUserId(user.id);
-            setIsGuest(true);
-            setAuthed(true);
-          })
-          .catch(() => setAuthed(false))
-      )
-      .finally(() => setAuthReady(true));
+      } catch {
+        setAuthed(false);
+      } finally {
+        setAuthReady(true);
+      }
+    }
+    bootstrapAuth();
   }, [reviewToken]);
 
   useEffect(() => {
