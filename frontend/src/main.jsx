@@ -6,6 +6,8 @@ import "./styles.css";
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
 const TYPEWRITER_DELAY_MS = 17;
 const TYPEWRITER_CHUNK_SIZE = 2;
+const DEMO_REVIEW_FULL_NAME = "Иванов Иван Иванович";
+const DEMO_REVIEW_PASSPORT = "1111 111111";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -114,7 +116,12 @@ function App() {
     "Укажите email, чтобы сохранить этот договор, получить ссылку для входа и отправить договор второй стороне."
   );
   const [reviewData, setReviewData] = useState(null);
-  const [reviewForm, setReviewForm] = useState({ fullName: "", passport: "", email: "", accepted: false });
+  const [reviewForm, setReviewForm] = useState({
+    fullName: DEMO_REVIEW_FULL_NAME,
+    passport: DEMO_REVIEW_PASSPORT,
+    email: "",
+    accepted: false,
+  });
   const [reviewNotice, setReviewNotice] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
   const messagesEndRef = useRef(null);
@@ -203,6 +210,15 @@ function App() {
     event.preventDefault();
     if (!reviewToken) return;
     setReviewNotice("");
+    const demoDataLeft =
+      reviewForm.fullName.trim() === DEMO_REVIEW_FULL_NAME ||
+      reviewForm.passport.trim() === DEMO_REVIEW_PASSPORT;
+    if (
+      demoDataLeft &&
+      !window.confirm("В форме остались примерные данные Иванова/паспорт 1111 111111. Подписать с ними или сначала заменить на реальные?")
+    ) {
+      return;
+    }
     const response = await fetch(`${API_URL}/review/${reviewToken}/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -576,6 +592,10 @@ function App() {
               ) : (
                 <form className="review-form" onSubmit={approveReview}>
                   <h2>Подписать договор</h2>
+                  <p className="form-hint">
+                    Поля заполнены примером, чтобы было понятно, какие данные нужны.
+                    Перед подписью замените ФИО и паспорт на свои реальные данные.
+                  </p>
                   <input
                     value={reviewForm.fullName}
                     onChange={(event) => setReviewForm((form) => ({ ...form, fullName: event.target.value }))}
@@ -914,6 +934,10 @@ function App() {
                         </p>
                         <KeyTermsCard terms={sessionDetail?.key_terms} />
                         <div className="party-form">
+                          <p className="form-hint">
+                            В договоре сейчас стоят игровые данные сторон для удобного чтения.
+                            Перед финальной подписью каждая сторона заменит их на свои реальные данные.
+                          </p>
                           <input
                             value={partyEmail}
                             onChange={(event) => setPartyEmail(event.target.value)}
