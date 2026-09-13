@@ -514,6 +514,24 @@ def collect_pending_norms_into_contract(contract_text: str, messages: list[Messa
     return (contract_text.rstrip() + "\n\n" + additional_section).strip()
 
 
+def build_contract_number(version_number: int) -> str:
+    return f"{now_utc().strftime('%d%m%y')}/{version_number}"
+
+
+def apply_contract_number(contract_text: str, version_number: int) -> str:
+    contract_number = build_contract_number(version_number)
+    lines = contract_text.splitlines()
+    for index, line in enumerate(lines[:5]):
+        if "договор" not in line.lower():
+            continue
+        if "№" in line:
+            lines[index] = re.sub(r"№\s*\S+", f"№ {contract_number}", line, count=1)
+        else:
+            lines[index] = f"{line.rstrip()} № {contract_number}"
+        return "\n".join(lines)
+    return f"Договор № {contract_number}\n\n{contract_text}"
+
+
 def build_question_reasoning_note(question: str) -> str:
     return (
         "Что я делаю:\n"
@@ -1272,6 +1290,7 @@ def save_contract_version(db: Session, session: ContractSession, content: str) -
     content = ensure_ai_arbitr_dispute_section(clean_contract_markdown(content))
     version_count = db.query(ContractVersion).filter(ContractVersion.session_id == session.id).count()
     version_number = version_count + 1
+    content = apply_contract_number(content, version_number)
     version = ContractVersion(
         session_id=session.id,
         version_number=version_number,
