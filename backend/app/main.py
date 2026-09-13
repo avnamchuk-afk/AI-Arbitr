@@ -1286,8 +1286,8 @@ async def send_message(
     except YandexGPTError:
         should_save_contract_version = False
         answer = (
-            "YandexGPT пока не настроен. Добавьте YANDEX_GPT_API_KEY и "
-            "YANDEX_GPT_FOLDER_ID в .env, чтобы генерировать проекты договоров."
+            "Не удалось получить ответ YandexGPT. Запрос не потерян, но генерация договора "
+            "не завершилась. Попробуйте отправить запрос еще раз через несколько секунд."
         )
 
     contract_text = answer

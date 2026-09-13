@@ -362,7 +362,10 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.detail || "Не удалось получить ответ Арби. Попробуйте отправить запрос еще раз.");
+      }
       if (thinkingTimer) window.clearInterval(thinkingTimer);
       setThinkingStep(thinkingSteps[thinkingSteps.length - 1]);
       await sleep(450);
@@ -381,6 +384,16 @@ function App() {
       setChatMode("idle");
       loadSession(currentSession.id);
       loadSessions();
+    } catch (error) {
+      setMessages((items) => [
+        ...items,
+        {
+          role: "assistant",
+          content:
+            error.message ||
+            "Не удалось получить ответ Арби. Попробуйте отправить запрос еще раз.",
+        },
+      ]);
     } finally {
       if (thinkingTimer) window.clearInterval(thinkingTimer);
       setThinking(false);

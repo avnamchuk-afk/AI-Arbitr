@@ -19,12 +19,18 @@ async def ask_yandex_gpt(messages: list[dict[str, str]]) -> str:
     }
     headers = {"Authorization": f"Api-Key {settings.yandex_gpt_api_key}"}
 
-    async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.post(
-            "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
-            json=payload,
-            headers=headers,
-        )
+    try:
+        timeout = httpx.Timeout(90.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
+                json=payload,
+                headers=headers,
+            )
+    except httpx.TimeoutException as exc:
+        raise YandexGPTError("YandexGPT response timed out") from exc
+    except httpx.HTTPError as exc:
+        raise YandexGPTError("YandexGPT API request failed") from exc
 
     if response.status_code >= 400:
         raise YandexGPTError("YandexGPT API is unavailable")
