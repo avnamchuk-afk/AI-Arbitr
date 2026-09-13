@@ -25,6 +25,7 @@ from app.models.entities import (
     Message,
     MessageRole,
     ParticipantRole,
+    RateLimitEvent,
     SessionStatus,
     User,
     now_utc,
@@ -109,6 +110,7 @@ class ReviewApproveRequest(BaseModel):
 GUEST_EMAIL_SUFFIX = "@guest.ai-arbitr.local"
 VERIFIED_IP_COOKIE_NAME = "ai_arbitr_verified_ip"
 VPN_CHECK_CACHE: dict[str, tuple[datetime, bool]] = {}
+DAILY_ACTION_LIMIT = 100
 DEMO_SESSION_TITLE = "пример"
 LEGACY_DEMO_SESSION_TITLE = "Пример: договор на лендинг"
 DEMO_USER_PROMPT = "Составь договор найма"
@@ -1048,6 +1050,43 @@ def verified_ip_matches(cookie_value: str | None, user: User, ip_address: str) -
     return bool(data and data["user_id"] == str(user.id) and data["ip"] == ip_address)
 
 
+def rate_limit_subject(request: Request, user: User | None = None, email: str = "") -> str:
+    if user is not None and not is_guest_user(user):
+        return f"user:{user.id}"
+    if email:
+        return f"email:{email.lower()}"
+    client_ip = get_client_ip(request)
+    return f"ip:{client_ip or 'unknown'}"
+
+
+def check_daily_rate_limit(
+    db: Session,
+    request: Request,
+    action: str,
+    user: User | None = None,
+    email: str = "",
+) -> None:
+    subject = rate_limit_subject(request, user=user, email=email)
+    today = now_utc().date()
+    day_start = datetime.combine(today, time.min, tzinfo=timezone.utc)
+    count = (
+        db.query(RateLimitEvent)
+        .filter(
+            RateLimitEvent.subject == subject,
+            RateLimitEvent.action == action,
+            RateLimitEvent.created_at >= day_start,
+        )
+        .count()
+    )
+    if count >= DAILY_ACTION_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail="Достигнут дневной лимит 100 запросов. Доступ будет восстановлен завтра.",
+        )
+    db.add(RateLimitEvent(subject=subject, action=action))
+    db.flush()
+
+
 def get_current_user(
     db: Session = Depends(get_db),
     session_cookie: str | None = Cookie(default=None, alias=settings.session_cookie_name),
@@ -1086,7 +1125,8 @@ def create_guest(response: Response, db: Session = Depends(get_db)):
     return {"id": user.id, "email": "", "is_guest": True}
 
 
-def issue_magic_link(email: str, db: Session) -> dict[str, str]:
+def issue_magic_link(email: str, request: Request, db: Session) -> dict[str, str]:
+    check_daily_rate_limit(db, request, "magic_link", email=email)
     raw_token = generate_raw_token()
     db.add(
         AuthToken(
@@ -1109,6 +1149,7 @@ def issue_magic_link(email: str, db: Session) -> dict[str, str]:
 @app.post("/auth/register")
 def register(
     payload: RegisterRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_optional_current_user),
 ):
@@ -1125,7 +1166,7 @@ def register(
     elif existing_user is None:
         db.add(User(email=payload.email))
         db.flush()
-    return issue_magic_link(payload.email, db)
+    return issue_magic_link(payload.email, request, db)
 
 
 @app.post("/auth/quick-register")
@@ -1159,16 +1200,16 @@ def quick_register_guest(
 
 
 @app.post("/auth/login")
-def request_login_link(payload: LoginRequest, db: Session = Depends(get_db)):
+def request_login_link(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).one_or_none()
     if user is None:
         raise HTTPException(status_code=404, detail="Аккаунт не найден. Зарегистрируйтесь по email.")
 
-    return issue_magic_link(payload.email, db)
+    return issue_magic_link(payload.email, request, db)
 
 
 @app.post("/auth/magic-link")
-def request_magic_link(payload: RegisterRequest, db: Session = Depends(get_db)):
+def request_magic_link(payload: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     if not payload.personal_data_accepted:
         raise HTTPException(status_code=400, detail="Нужно согласие на обработку персональных данных")
 
@@ -1177,7 +1218,7 @@ def request_magic_link(payload: RegisterRequest, db: Session = Depends(get_db)):
         db.add(User(email=payload.email))
         db.flush()
 
-    return issue_magic_link(payload.email, db)
+    return issue_magic_link(payload.email, request, db)
 
 
 @app.get("/auth/verify")
@@ -1381,10 +1422,10 @@ def finalize_signed_session(db: Session, session: ContractSession, final_version
     owner = db.get(User, session.owner_user_id)
     if owner is None:
         raise HTTPException(status_code=400, detail="Владелец договора не найден")
-    if count_completed_today(db, owner) >= 10:
+    if count_completed_today(db, owner) >= DAILY_ACTION_LIMIT:
         raise HTTPException(
             status_code=429,
-            detail="Достигнут лимит бета-версии: 10 завершенных договоров в день. Доступ будет восстановлен завтра",
+            detail="Достигнут лимит бета-версии: 100 завершенных договоров в день. Доступ будет восстановлен завтра",
         )
     session.status = SessionStatus.finalized
     session.finalized_at = now_utc()
@@ -1482,6 +1523,7 @@ def save_contract_version(db: Session, session: ContractSession, content: str) -
 @app.post("/sessions/{session_id}/invite")
 def create_invite(
     session_id: str,
+    request: Request,
     payload: InviteRequest | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -1515,6 +1557,7 @@ def create_invite(
     version_number = latest_version.version_number
     sent = False
     if payload and payload.email:
+        check_daily_rate_limit(db, request, "contract_invite", user=user)
         invited_user = db.query(User).filter(User.email == str(payload.email)).one_or_none()
         if invited_user is None:
             invited_user = User(email=str(payload.email))
@@ -1634,10 +1677,12 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
 async def send_message(
     session_id: str,
     payload: MessageRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     session = get_accessible_session(db, session_id, user)
+    check_daily_rate_limit(db, request, "chat_message", user=user)
 
     is_dispute = payload.content.strip().upper().startswith("СПОР")
     if session.status == SessionStatus.finalized and not is_dispute:
