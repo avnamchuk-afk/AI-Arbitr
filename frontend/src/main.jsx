@@ -103,6 +103,7 @@ function App() {
   const [partyEmail, setPartyEmail] = useState("");
   const [deleteCandidateId, setDeleteCandidateId] = useState("");
   const [chatMode, setChatMode] = useState("idle");
+  const [sessionListMode, setSessionListMode] = useState("active");
   const [questionResolved, setQuestionResolved] = useState(false);
   const [authPromptTitle, setAuthPromptTitle] = useState("Сохранить историю");
   const [authPromptCopy, setAuthPromptCopy] = useState(
@@ -497,6 +498,9 @@ function App() {
 
   const hasContractVersion = Boolean(sessionDetail?.latest_version);
   const isFinalized = currentSession?.status === "finalized";
+  const activeSessions = sessions.filter((session) => session.status !== "finalized");
+  const archivedSessions = sessions.filter((session) => session.status === "finalized");
+  const visibleSessions = sessionListMode === "archive" ? archivedSessions : activeSessions;
   const partyTwoSigned = (sessionDetail?.participants || []).some(
     (participant) => participant.role === "party_2" && participant.approval_status === "approved"
   );
@@ -703,8 +707,29 @@ function App() {
         <button className="new-contract" onClick={createSession}>
           <Plus size={18} /> Новый договор
         </button>
+        <div className="session-tabs" role="tablist" aria-label="Список договоров">
+          <button
+            className={sessionListMode === "active" ? "active" : ""}
+            onClick={() => setSessionListMode("active")}
+            type="button"
+          >
+            Рабочие <span>{activeSessions.length}</span>
+          </button>
+          <button
+            className={sessionListMode === "archive" ? "active" : ""}
+            onClick={() => setSessionListMode("archive")}
+            type="button"
+          >
+            Архив <span>{archivedSessions.length}</span>
+          </button>
+        </div>
         <div className="session-list">
-          {sessions.map((session) => (
+          {visibleSessions.length === 0 && (
+            <p className="session-empty">
+              {sessionListMode === "archive" ? "Финализированных договоров пока нет." : "Рабочих договоров пока нет."}
+            </p>
+          )}
+          {visibleSessions.map((session) => (
             <div key={session.id} className="session-item">
               <button
                 className="session-open"
@@ -716,7 +741,10 @@ function App() {
                 }}
               >
                 <span>{session.title}</span>
-                <small>{formatSessionTimestamp(session)}</small>
+                <small>
+                  {formatSessionTimestamp(session)}
+                  {session.status === "finalized" ? " · подписан" : ""}
+                </small>
               </button>
               {session.status === "finalized" ? null : deleteCandidateId === session.id ? (
                 <div className="delete-confirm">

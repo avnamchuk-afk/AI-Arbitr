@@ -431,6 +431,41 @@ button:hover {
   overflow: auto;
 }
 
+.session-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.session-tabs button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgb(255 255 255 / 34%);
+  font-size: 13px;
+}
+
+.session-tabs button.active {
+  color: var(--ink);
+  border-color: rgb(64 90 138 / 34%);
+  background: rgb(255 255 255 / 76%);
+}
+
+.session-tabs span {
+  color: var(--muted);
+}
+
+.session-empty {
+  margin: 4px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgb(255 255 255 / 32%);
+  font-size: 13px;
+}
+
 .session-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
