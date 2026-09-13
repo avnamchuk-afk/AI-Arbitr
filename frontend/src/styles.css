@@ -72,16 +72,142 @@ button:hover {
   padding: 14px 0 2px;
 }
 
-.review-header span {
-  color: var(--accent);
-  font-weight: 760;
-}
-
 .review-header h1 {
   margin: 0;
   color: var(--ink);
   font-size: 24px;
   letter-spacing: 0;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.brand-mark.compact {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.brand-icon {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgb(64 90 138 / 30%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 48%);
+  box-shadow: 0 10px 24px rgb(23 34 47 / 8%);
+  backdrop-filter: var(--blur);
+}
+
+.brand-icon::before,
+.brand-icon::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  width: 2px;
+  height: 23px;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  transform-origin: 50% 100%;
+}
+
+.brand-icon::before {
+  left: 18px;
+  transform: rotate(19deg);
+}
+
+.brand-icon::after {
+  right: 18px;
+  transform: rotate(-19deg);
+}
+
+.brand-icon i {
+  position: absolute;
+  top: 25px;
+  left: 14px;
+  width: 14px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent-strong);
+}
+
+.brand-icon i::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: -17px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--accent-strong);
+}
+
+.brand-word {
+  font-size: 30px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.brand-beta {
+  align-self: flex-start;
+  margin-top: 2px;
+  border: 1px solid rgb(64 90 138 / 24%);
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--accent-strong);
+  background: rgb(255 255 255 / 50%);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.brand-mark.compact .brand-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  box-shadow: none;
+}
+
+.brand-mark.compact .brand-icon::before,
+.brand-mark.compact .brand-icon::after {
+  top: 7px;
+  height: 17px;
+}
+
+.brand-mark.compact .brand-icon::before {
+  left: 13px;
+}
+
+.brand-mark.compact .brand-icon::after {
+  right: 13px;
+}
+
+.brand-mark.compact .brand-icon i {
+  top: 18px;
+  left: 10px;
+  width: 10px;
+}
+
+.brand-mark.compact .brand-icon i::after {
+  left: 3px;
+  top: -12px;
+}
+
+.brand-mark.compact .brand-word {
+  font-size: 16px;
+}
+
+.brand-mark.compact .brand-beta {
+  margin-top: 0;
+  padding: 2px 5px;
+  font-size: 9px;
 }
 
 .review-header p {
@@ -651,14 +777,6 @@ button:hover {
   padding: 24px 12px;
 }
 
-.empty-state h2 {
-  margin: 0;
-  font-size: 34px;
-  font-weight: 760;
-  line-height: 1.1;
-  color: var(--ink);
-}
-
 .empty-state p {
   margin: 0;
   color: var(--muted);
@@ -1089,12 +1207,6 @@ button:hover {
     backdrop-filter: var(--blur);
   }
 
-  .mobile-topbar strong {
-    color: var(--ink);
-    font-weight: 760;
-    letter-spacing: 0;
-  }
-
   .mobile-menu {
     display: grid;
     position: static;
@@ -1150,10 +1262,6 @@ button:hover {
     min-height: calc(100vh - 120px);
     align-content: center;
     padding: 18px 4px 40px;
-  }
-
-  .empty-state h2 {
-    font-size: 30px;
   }
 
   .empty-state p {

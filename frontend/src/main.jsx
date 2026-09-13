@@ -101,6 +101,18 @@ function getHistoryEvent(message) {
   return null;
 }
 
+function LogoMark({ compact = false }) {
+  return (
+    <div className={compact ? "brand-mark compact" : "brand-mark"} aria-label="AI-Arbitr beta">
+      <span className="brand-icon" aria-hidden="true">
+        <i />
+      </span>
+      <span className="brand-word">AI-Arbitr</span>
+      <span className="brand-beta">beta</span>
+    </div>
+  );
+}
+
 function KeyTermsCard({ terms }) {
   const visibleTerms = (terms || []).filter((term) => term.value && term.value !== "не указано");
   if (!visibleTerms.length) return null;
@@ -606,7 +618,7 @@ function App() {
       <main className="review-page">
         <section className="review-shell">
           <header className="review-header">
-            <span>AI-arbitr</span>
+            <LogoMark compact />
             <h1>{reviewData?.title || "Согласование договора"}</h1>
             <p>Проверьте условия, откройте PDF при необходимости и подпишите, если все подходит.</p>
           </header>
@@ -730,7 +742,7 @@ function App() {
         <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
           <Menu size={20} />
         </button>
-        <strong>AI-arbitr</strong>
+        <LogoMark compact />
       </div>
       {sidebarOpen && (
         <button className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-label="Закрыть меню" />
@@ -903,7 +915,7 @@ function App() {
       <section className="chat-area">
         {!currentSession ? (
           <div className="empty-state">
-            <h2>AI-arbitr</h2>
+            <LogoMark />
             <p>
               Работаю на базе Яндекс GPT. Помогу составить справедливый договор в соответствии
               с ГК и обычной практикой, согласовать его с другой стороной, напомнить о сроках
