@@ -436,6 +436,7 @@ function App() {
   }
 
   async function loadSession(sessionId) {
+    setAppNotice("");
     const response = await fetch(`${API_URL}/sessions/${sessionId}`, { credentials: "include" });
     if (!response.ok) return;
     const detail = await response.json();
@@ -498,6 +499,8 @@ function App() {
   }
 
   async function createSession() {
+    setAppNotice("");
+    setDeleteCandidateId("");
     const response = await fetch(`${API_URL}/sessions`, {
       method: "POST",
       credentials: "include",
@@ -507,6 +510,9 @@ function App() {
     setCurrentSession(session);
     setSessionDetail(null);
     setInviteLink("");
+    setPartyEmail("");
+    setChatMode("idle");
+    setQuestionResolved(false);
     setSessions([session, ...sessions]);
     setMessages([]);
     setSidebarOpen(false);
@@ -688,23 +694,27 @@ function App() {
   }
 
   function startQuestion() {
+    setAppNotice("");
     setChatMode("question");
     setDraft("");
     setQuestionResolved(false);
   }
 
   function startAddition() {
+    setAppNotice("");
     setChatMode("add");
     setDraft("");
     setQuestionResolved(false);
   }
 
   function startAgreement() {
+    setAppNotice("");
     setChatMode("agree");
     setQuestionResolved(false);
   }
 
   function startDispute() {
+    setAppNotice("");
     setChatMode("dispute");
     setDraft("");
     setQuestionResolved(false);
