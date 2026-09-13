@@ -656,6 +656,7 @@ def build_key_terms(contract_text: str) -> list[dict[str, str]]:
         {"label": "Дети", "value": children_value},
         {"label": "Животные", "value": pets_value},
         {"label": "Депозит", "value": deposit_value},
+        {"label": "Споры", "value": "через AI-Arbitr"},
     ]
 
 
@@ -746,7 +747,45 @@ async def summarize_added_contract_norm(updated_contract: str, requested_change:
     return await ask_yandex_gpt(prompt)
 
 
-async def propose_contract_norm(contract_text: str, dialogue: str) -> str:
+def build_rule_based_contract_norm(dialogue: str) -> str | None:
+    normalized = dialogue.lower().replace("ё", "е")
+    deposit_markers = ("депозит", "обеспечительный")
+    split_markers = ("два", "2 ", "двум", "две", "платеж", "рассроч", "част")
+    if any(marker in normalized for marker in deposit_markers) and any(marker in normalized for marker in split_markers):
+        return (
+            "Предлагаю такую редакцию нормы:\n\n"
+            "[Номер пункта]. Обеспечительный платеж уплачивается Нанимателем двумя равными платежами: "
+            "50% суммы обеспечительного платежа вносится в день подписания Договора, оставшиеся 50% "
+            "суммы обеспечительного платежа вносятся не позднее [срок внесения второй части]. "
+            "До внесения второй части обеспечительного платежа Наниматель обязан исполнять остальные "
+            "обязательства по Договору в полном объеме. Невнесение второй части обеспечительного платежа "
+            "в установленный срок считается существенным нарушением Договора и дает Наймодателю право "
+            "потребовать внесения задолженности либо расторжения Договора в порядке, предусмотренном Договором.\n\n"
+            "Добавить это условие в договор?"
+        )
+
+    increase_markers = ("повыс", "увелич", "подня", "индексац")
+    payment_markers = ("плата", "аренд", "найм", "стоимость", "цена")
+    if any(marker in normalized for marker in increase_markers) and any(marker in normalized for marker in payment_markers):
+        return (
+            "Предлагаю такую редакцию нормы:\n\n"
+            "[Номер пункта]. Размер платы за пользование жилым помещением может быть изменен только "
+            "по соглашению Сторон. Одностороннее увеличение платы Наймодателем не допускается, "
+            "за исключением случая, когда Стороны заранее письменно согласовали такое изменение. "
+            "При согласовании права на повышение платы оно допускается не чаще одного раза в год, "
+            "с письменным уведомлением Нанимателя не менее чем за 30 календарных дней и в пределах "
+            "не более [процент]% от действующего размера платы.\n\n"
+            "Добавить это условие в договор?"
+        )
+
+    return None
+
+
+async def propose_contract_norm(contract_text: str, last_answer: str, dialogue: str) -> str:
+    rule_based = build_rule_based_contract_norm(dialogue)
+    if rule_based:
+        return rule_based
+
     prompt = [
         {
             "role": "system",
@@ -754,15 +793,17 @@ async def propose_contract_norm(contract_text: str, dialogue: str) -> str:
                 "Ты договорный юрист. Пользователь согласился включить в договор положение, "
                 "которое ты только что предложил после ответа на вопрос. "
                 "Не выводи весь договор и не говори, что договор уже изменен. "
-                "Сформулируй одну готовую норму для включения в договор: с номером пункта-заглушкой "
-                "и юридически аккуратным текстом. После нормы коротко спроси: "
-                "«Добавить это условие в договор?»"
+                "Сформулируй строго одну готовую норму для включения в договор: с номером пункта-заглушкой "
+                "и юридически аккуратным текстом. Норма должна вытекать только из последнего предложения "
+                "о включении условия. Не добавляй тему, которую пользователь не обсуждал. "
+                "После нормы коротко спроси: «Добавить это условие в договор?»"
             ),
         },
         {
             "role": "user",
             "text": (
                 f"Текущая версия договора:\n{contract_text}\n\n"
+                f"Последний ответ помощника, где предложено включить условие:\n{last_answer}\n\n"
                 f"Последний диалог:\n{dialogue}"
             ),
         },
@@ -1412,8 +1453,9 @@ async def send_message(
         and "хотите включить" in last_assistant_message(prior_messages).lower()
     ):
         recent_dialogue = format_recent_dialogue(prior_messages)
+        last_assistant = last_assistant_message(prior_messages)
         try:
-            answer = await propose_contract_norm(latest_version_before_answer.content, recent_dialogue)
+            answer = await propose_contract_norm(latest_version_before_answer.content, last_assistant, recent_dialogue)
         except YandexGPTError:
             answer = (
                 "Да, это условие стоит добавить. Предлагаю такую редакцию:\n\n"
