@@ -425,6 +425,30 @@ const PROJECT_TEAM = [
   },
 ];
 
+function ModelSelector({ onSoon }) {
+  return (
+    <label className="model-selector" aria-label="Выбор нейросети">
+      <span className="model-status" aria-hidden="true" />
+      <select
+        value="yandexgpt"
+        onChange={(event) => {
+          if (event.target.value !== "yandexgpt") {
+            onSoon?.("Переключение моделей появится позже");
+          }
+          event.target.value = "yandexgpt";
+        }}
+      >
+        <option value="yandexgpt">Яндекс GPT</option>
+        <option value="gigachat" disabled>GigaChat скоро</option>
+        <option value="chatgpt" disabled>ChatGPT скоро</option>
+        <option value="qwen" disabled>Qwen скоро</option>
+        <option value="claude" disabled>Claude скоро</option>
+        <option value="deepseek" disabled>DeepSeek скоро</option>
+      </select>
+    </label>
+  );
+}
+
 function LogoMark({ compact = false, onClick }) {
   const content = (
     <>
@@ -1318,7 +1342,7 @@ function App() {
         <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
           <Menu size={20} />
         </button>
-        <LogoMark compact onClick={() => setAboutOpen(true)} />
+        <ModelSelector onSoon={setToast} />
         <button className="mobile-stat" onClick={openStats} aria-label="Статистика сервиса">
           <BarChart3 size={20} />
         </button>

@@ -1668,6 +1668,45 @@ button:hover {
   display: none;
 }
 
+.model-selector {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgb(64 90 138 / 22%);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: rgb(255 255 255 / 68%);
+  box-shadow: 0 10px 28px rgb(23 34 47 / 7%);
+  backdrop-filter: var(--blur);
+}
+
+.model-status {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #25a36a;
+  box-shadow: 0 0 0 3px rgb(37 163 106 / 12%);
+  flex: 0 0 9px;
+}
+
+.model-selector select {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.model-selector option:disabled {
+  color: #9aa3ad;
+}
+
 .sidebar-backdrop {
   display: none;
 }
