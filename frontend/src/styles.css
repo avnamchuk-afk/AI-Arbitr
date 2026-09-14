@@ -791,7 +791,17 @@ button:hover {
 
 .account {
   display: grid;
-  gap: 10px;
+  gap: 8px;
+}
+
+.account strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .account button,
@@ -1024,8 +1034,8 @@ button:hover {
 .sidebar-footer {
   margin-top: auto;
   display: grid;
-  gap: 8px;
-  font-size: 14px;
+  gap: 6px;
+  font-size: 13px;
 }
 
 .sidebar-footer button {

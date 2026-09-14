@@ -1072,10 +1072,6 @@ function App() {
 
   const hasContractVersion = Boolean(sessionDetail?.latest_version);
   const isFinalized = currentSession?.status === "finalized";
-  const sessionCounters = SESSION_FILTERS.reduce((acc, filter) => {
-    acc[filter.id] = sessions.filter((session) => getSessionBucket(session) === filter.id).length;
-    return acc;
-  }, {});
   const normalizedSessionSearch = sessionSearch.trim().toLowerCase();
   const matchesSessionSearch = (session) => {
     if (!normalizedSessionSearch) return true;
@@ -1432,7 +1428,7 @@ function App() {
       )}
       <aside className={sidebarOpen ? "sidebar open" : "sidebar"}>
         <div className="account">
-          <strong>{isGuest ? "Гостевой режим" : email}</strong>
+          {!isGuest && <strong>{email}</strong>}
           {isGuest ? (
             <button
               onClick={() => {
@@ -1465,9 +1461,6 @@ function App() {
               <LogOut size={16} /> Выход
             </button>
           )}
-          <button className="stats-button" onClick={openStats}>
-            <BarChart3 size={16} /> Статистика
-          </button>
         </div>
         <button className="new-contract" onClick={createSession}>
           <Plus size={18} /> Новый договор
@@ -1481,30 +1474,33 @@ function App() {
           />
         </label>
         <div className="session-tabs" role="list" aria-label="Список договоров">
-          {SESSION_FILTERS.map((filter) => (
-            <section className="session-group" key={filter.id}>
-              <button
-                className={expandedSessionGroups.includes(filter.id) ? "active" : ""}
-                disabled={!sessionCounters[filter.id]}
-                onClick={() => {
-                  if (!sessionCounters[filter.id]) return;
-                  setExpandedSessionGroups((groups) =>
-                    groups.includes(filter.id)
-                      ? groups.filter((group) => group !== filter.id)
-                      : [...groups, filter.id]
-                  );
-                }}
-                type="button"
-              >
-                <span className="session-group-title">
-                  {expandedSessionGroups.includes(filter.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  {filter.label}
-                </span>
-                <span className={sessionCounters[filter.id] ? "session-count has-items" : "session-count"}>
-                  {sessionCounters[filter.id] || 0}
-                </span>
-              </button>
-              {expandedSessionGroups.includes(filter.id) && (
+          {SESSION_FILTERS.map((filter) => {
+            const visibleCount = sessionsByGroup[filter.id].length;
+            const isExpanded = expandedSessionGroups.includes(filter.id);
+            return (
+              <section className="session-group" key={filter.id}>
+                <button
+                  className={isExpanded ? "active" : ""}
+                  disabled={!visibleCount}
+                  onClick={() => {
+                    if (!visibleCount) return;
+                    setExpandedSessionGroups((groups) =>
+                      groups.includes(filter.id)
+                        ? groups.filter((group) => group !== filter.id)
+                        : [...groups, filter.id]
+                    );
+                  }}
+                  type="button"
+                >
+                  <span className="session-group-title">
+                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    {filter.label}
+                  </span>
+                  <span className={visibleCount ? "session-count has-items" : "session-count"}>
+                    {visibleCount}
+                  </span>
+                </button>
+                {isExpanded && (
                 <div className="session-list">
                   {sessionsByGroup[filter.id].length === 0 ? (
                     <p className="session-empty">
@@ -1558,7 +1554,8 @@ function App() {
                 </div>
               )}
             </section>
-          ))}
+            );
+          })}
         </div>
         <div className="sidebar-footer">
           <button onClick={() => setHelpOpen(true)}>Помощь / FAQ</button>
