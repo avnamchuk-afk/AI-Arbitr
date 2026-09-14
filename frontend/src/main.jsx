@@ -391,14 +391,31 @@ function getAdditionPlaceholder(session, detail) {
   return "Например: добавить условие о сроках, оплате или ответственности";
 }
 
-function LogoMark({ compact = false }) {
-  return (
-    <div className={compact ? "brand-mark compact" : "brand-mark"} aria-label="AI-Arbitr beta">
+function LogoMark({ compact = false, onClick }) {
+  const content = (
+    <>
       <span className="brand-icon" aria-hidden="true">
         <i />
       </span>
       <span className="brand-word">AI-Arbitr</span>
       <span className="brand-beta">beta</span>
+    </>
+  );
+  if (onClick) {
+    return (
+      <button
+        className={compact ? "brand-mark compact interactive" : "brand-mark interactive"}
+        type="button"
+        onClick={onClick}
+        aria-label="О сервисе AI-Arbitr"
+      >
+        {content}
+      </button>
+    );
+  }
+  return (
+    <div className={compact ? "brand-mark compact" : "brand-mark"} aria-label="AI-Arbitr beta">
+      {content}
     </div>
   );
 }
@@ -484,6 +501,7 @@ function App() {
   const [isGuest, setIsGuest] = useState(false);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -1160,7 +1178,7 @@ function App() {
         <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
           <Menu size={20} />
         </button>
-        <LogoMark compact />
+        <LogoMark compact onClick={() => setAboutOpen(true)} />
       </div>
       {sidebarOpen && (
         <button className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-label="Закрыть меню" />
@@ -1227,6 +1245,46 @@ function App() {
             </p>
             <button className="modal-secondary" type="button" onClick={() => setHelpOpen(false)}>
               Закрыть
+            </button>
+          </section>
+        </div>
+      )}
+      {aboutOpen && (
+        <div className="auth-modal-backdrop" onClick={() => setAboutOpen(false)}>
+          <section className="help-modal about-modal" onClick={(event) => event.stopPropagation()}>
+            <LogoMark compact />
+            <h1>AI-Arbitr помогает пройти договор до конца</h1>
+            <p>
+              Это не просто генератор текста. Я веду пользователя по шагам: проект договора,
+              вопросы, новые условия, согласование, подписание, PDF и спор, если он возникнет.
+            </p>
+            <div className="about-grid">
+              <button
+                type="button"
+                onClick={() => {
+                  setAboutOpen(false);
+                  createSession();
+                }}
+              >
+                <Plus size={16} /> Новый договор
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAboutOpen(false);
+                  setHelpOpen(true);
+                }}
+              >
+                <FileText size={16} /> Сценарий MVP
+              </button>
+            </div>
+            <ul className="about-list">
+              <li>В договоры добавляются вымышленные данные, чтобы текст сразу выглядел живым.</li>
+              <li>После вопросов можно добавить краткую или расширенную редакцию условия.</li>
+              <li>Финальный договор и справка электронного взаимодействия уходят сторонам на email.</li>
+            </ul>
+            <button className="modal-secondary" type="button" onClick={() => setAboutOpen(false)}>
+              Понятно
             </button>
           </section>
         </div>
@@ -1366,7 +1424,7 @@ function App() {
       <section className="chat-area">
         {!currentSession ? (
           <div className="empty-state">
-            <LogoMark />
+            <LogoMark onClick={() => setAboutOpen(true)} />
             <p>
               Работаю на базе Яндекс GPT. Помогу составить справедливый договор в соответствии
               с ГК и обычной практикой, согласовать его с другой стороной, напомнить о сроках

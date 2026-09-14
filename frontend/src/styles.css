@@ -155,6 +155,24 @@ button:hover {
   color: var(--ink);
 }
 
+.brand-mark.interactive {
+  border: 0;
+  padding: 4px;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.16s ease;
+}
+
+.brand-mark.interactive:hover {
+  transform: translateY(-1px);
+  background: rgb(64 90 138 / 7%);
+}
+
+.brand-mark.interactive:active {
+  transform: translateY(0);
+}
+
 .brand-mark.compact {
   justify-content: flex-start;
   gap: 8px;
@@ -587,6 +605,35 @@ button:hover {
 }
 
 .help-modal ul {
+  padding-left: 18px;
+}
+
+.about-modal {
+  width: min(480px, 100%);
+}
+
+.about-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.about-grid button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgb(64 90 138 / 24%);
+  border-radius: 8px;
+  color: var(--accent-strong);
+  background: rgb(255 255 255 / 54%);
+  box-shadow: none;
+}
+
+.about-list {
+  display: grid;
+  gap: 6px;
   padding-left: 18px;
 }
 
