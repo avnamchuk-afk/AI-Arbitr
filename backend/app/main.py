@@ -5,6 +5,7 @@ import json
 from types import SimpleNamespace
 from io import BytesIO
 from datetime import datetime, time, timezone
+from urllib.parse import urlencode
 from urllib.request import urlopen
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
@@ -1690,6 +1691,37 @@ def finalize_signed_session(db: Session, session: ContractSession, final_version
     db.add(Message(session_id=session.id, role=MessageRole.system, content="CONTRACT_FINALIZED"))
 
 
+def build_contract_calendar_link(session: ContractSession, final_version: ContractVersion) -> str:
+    event_date = session.finalized_at or now_utc()
+    start = event_date.strftime("%Y%m%d")
+    end = event_date.strftime("%Y%m%d")
+    contract_text = f"{session.title}\n{final_version.content}".lower()
+    is_rent_contract = any(marker in contract_text for marker in ("найм", "наниматель", "наймодатель", "жилое помещение"))
+    if is_rent_contract:
+        title = "Ежемесячная оплата по договору найма"
+        details = (
+            f"Напоминание AI-Arbitr по договору: {session.title}. "
+            "Проверьте оплату за найм и связанные платежи по условиям договора."
+        )
+    else:
+        title = f"Проверить обязательства по договору: {session.title}"
+        details = (
+            f"Напоминание AI-Arbitr по договору: {session.title}. "
+            "Проверьте сроки, оплату и исполнение обязательств."
+        )
+
+    query = urlencode(
+        {
+            "action": "TEMPLATE",
+            "text": title,
+            "dates": f"{start}/{end}",
+            "details": details,
+            "recur": "RRULE:FREQ=MONTHLY",
+        }
+    )
+    return f"https://calendar.google.com/calendar/render?{query}"
+
+
 def format_history(messages: list[Message]) -> str:
     return "\n\n".join(
         f"{message.created_at.isoformat()} / {message.role.value}:\n{message.content}" for message in messages
@@ -2484,9 +2516,10 @@ def approve_version(session_id: str, user: User = Depends(get_current_user), db:
         )
         pdf_bytes = build_contract_pdf(session, latest_version, participants, messages)
         certificate_bytes = build_interaction_certificate_pdf(session, latest_version, participants, messages)
+        calendar_link = build_contract_calendar_link(session, latest_version)
         for item in participants:
             if item.user and not is_guest_user(item.user):
-                send_contract_signed_notice(item.user.email, session.title, pdf_bytes, certificate_bytes)
+                send_contract_signed_notice(item.user.email, session.title, pdf_bytes, certificate_bytes, calendar_link)
     return {"finalized": both_approved, "status": session.status}
 
 

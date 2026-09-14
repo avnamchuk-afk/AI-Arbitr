@@ -65,6 +65,7 @@ def send_contract_signed_notice(
     title: str,
     pdf_bytes: bytes | None = None,
     certificate_bytes: bytes | None = None,
+    calendar_link: str | None = None,
 ) -> None:
     if not smtp_is_configured():
         return
@@ -82,7 +83,8 @@ def send_contract_signed_notice(
         "Здравствуйте!\n\n"
         f"Договор подписан обеими сторонами: {title}.\n\n"
         f"{attachment_text}\n\n"
-        "Если возникнет спор, откройте его через сервис AI-Арбитр.\n"
+        + (f"Добавить договорное событие в календарь:\n{calendar_link}\n\n" if calendar_link else "")
+        + "Если возникнет спор, откройте его через сервис AI-Арбитр.\n"
     )
     if pdf_bytes:
         message.add_attachment(
