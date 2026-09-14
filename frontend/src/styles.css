@@ -1171,6 +1171,14 @@ button:hover {
   font-size: 16px;
 }
 
+.hero-offer {
+  justify-self: center;
+  color: var(--accent-strong);
+  font-size: 17px;
+  font-weight: 820;
+  line-height: 1.2;
+}
+
 .hero-flow {
   justify-self: center;
   max-width: 100%;
@@ -1192,11 +1200,6 @@ button:hover {
   background: rgb(255 255 255 / 56%);
   box-shadow: 0 8px 22px rgb(23 34 47 / 5%);
   backdrop-filter: var(--blur);
-}
-
-.hero-flow strong {
-  color: var(--accent-strong);
-  font-weight: 800;
 }
 
 .hero-flow i {

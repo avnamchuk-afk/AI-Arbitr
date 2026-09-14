@@ -1725,8 +1725,8 @@ function App() {
         {!currentSession ? (
           <div className="empty-state">
             <LogoMark onClick={() => setAboutOpen(true)} />
+            <strong className="hero-offer">Бесплатно в смартфоне</strong>
             <div className="hero-flow" aria-label="Клиентский путь AI-Arbitr">
-              <strong>Бесплатно в смартфоне:</strong>
               <span>Составить</span>
               <i aria-hidden="true">→</i>
               <span>Согласовать</span>
