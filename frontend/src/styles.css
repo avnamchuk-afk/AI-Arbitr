@@ -572,6 +572,7 @@ button:hover {
   padding: 18px;
   background: rgb(23 34 47 / 32%);
   backdrop-filter: blur(6px);
+  touch-action: pan-y;
 }
 
 .auth-modal {
@@ -774,6 +775,7 @@ button:hover {
 .app-shell {
   min-height: 100vh;
   display: flex;
+  touch-action: pan-y;
 }
 
 .sidebar {

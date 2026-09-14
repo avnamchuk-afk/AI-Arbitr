@@ -586,6 +586,7 @@ function App() {
   const [reviewNotice, setReviewNotice] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const gestureRef = useRef({ x: 0, y: 0 });
 
   const reviewToken = getReviewTokenFromPath();
   const isPrivacyPath = window.location.pathname === "/privacy";
@@ -1038,6 +1039,70 @@ function App() {
     setToast(term ? `Открыл текущую версию: ${term.label}` : "Открыл текущую версию договора");
   }
 
+  function goBack() {
+    if (authPromptOpen) {
+      setAuthPromptOpen(false);
+      setAfterAuthAction("");
+      return true;
+    }
+    if (helpOpen) {
+      setHelpOpen(false);
+      return true;
+    }
+    if (aboutOpen) {
+      setAboutOpen(false);
+      return true;
+    }
+    if (statsOpen) {
+      setStatsOpen(false);
+      return true;
+    }
+    if (sidebarOpen) {
+      setSidebarOpen(false);
+      return true;
+    }
+    if (contractPreviewOpen) {
+      setContractPreviewOpen(false);
+      return true;
+    }
+    if (currentSession) {
+      setCurrentSession(null);
+      setSessionDetail(null);
+      setMessages([]);
+      setInviteLink("");
+      setChatMode("idle");
+      return true;
+    }
+    return false;
+  }
+
+  function closeOverlay() {
+    if (authPromptOpen || helpOpen || aboutOpen || statsOpen || sidebarOpen || contractPreviewOpen) {
+      goBack();
+      return true;
+    }
+    return false;
+  }
+
+  function handleTouchStart(event) {
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+    gestureRef.current = { x: touch.clientX, y: touch.clientY };
+  }
+
+  function handleTouchEnd(event) {
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+    const dx = touch.clientX - gestureRef.current.x;
+    const dy = touch.clientY - gestureRef.current.y;
+    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    if (dx > 0) {
+      goBack();
+    } else {
+      closeOverlay();
+    }
+  }
+
   function downloadCertificate() {
     if (!currentSession) return;
     window.open(`${API_URL}/sessions/${currentSession.id}/certificate.pdf`, "_blank", "noopener,noreferrer");
@@ -1248,7 +1313,7 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <div className="mobile-topbar">
         <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
           <Menu size={20} />
@@ -1259,10 +1324,16 @@ function App() {
         </button>
       </div>
       {sidebarOpen && (
-        <button className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-label="Закрыть меню" />
+        <button
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          aria-label="Закрыть меню"
+        />
       )}
       {authPromptOpen && (
-        <div className="auth-modal-backdrop">
+        <div className="auth-modal-backdrop" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           <form className="login-form auth-modal" onSubmit={login}>
             <h1>{authPromptTitle}</h1>
             <p className="auth-copy">{authPromptCopy}</p>
@@ -1292,7 +1363,7 @@ function App() {
         </div>
       )}
       {helpOpen && (
-        <div className="auth-modal-backdrop">
+        <div className="auth-modal-backdrop" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           <section className="help-modal">
             <h1>Что умеет MVP</h1>
             <p>
@@ -1328,7 +1399,12 @@ function App() {
         </div>
       )}
       {aboutOpen && (
-        <div className="auth-modal-backdrop" onClick={() => setAboutOpen(false)}>
+        <div
+          className="auth-modal-backdrop"
+          onClick={() => setAboutOpen(false)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
           <section className="help-modal about-modal" onClick={(event) => event.stopPropagation()}>
             <LogoMark compact />
             <h1>AI-Arbitr помогает пройти договор до конца</h1>
@@ -1387,7 +1463,12 @@ function App() {
         </div>
       )}
       {statsOpen && (
-        <div className="auth-modal-backdrop" onClick={() => setStatsOpen(false)}>
+        <div
+          className="auth-modal-backdrop"
+          onClick={() => setStatsOpen(false)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
           <section className="help-modal stats-modal" onClick={(event) => event.stopPropagation()}>
             <div className="stats-head">
               <BarChart3 size={22} />
