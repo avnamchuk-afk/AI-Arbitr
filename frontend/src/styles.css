@@ -1062,7 +1062,7 @@ button:hover {
 }
 
 .message {
-  max-width: min(760px, 92%);
+  max-width: min(760px, 88%);
   white-space: pre-wrap;
   line-height: 1.42;
   padding: 14px 16px;
@@ -1072,6 +1072,9 @@ button:hover {
 
 .message.user {
   align-self: flex-end;
+  margin-left: auto;
+  margin-right: 6px;
+  max-width: min(680px, 82%);
   background: rgb(220 229 246 / 72%);
   border: 1px solid rgb(64 90 138 / 18%);
   backdrop-filter: var(--blur);
@@ -1079,9 +1082,49 @@ button:hover {
 
 .message.assistant {
   align-self: flex-start;
+  margin-left: 0;
+  margin-right: auto;
+  max-width: min(800px, 90%);
   background: var(--surface-strong);
   border: 1px solid var(--line);
   backdrop-filter: var(--blur);
+}
+
+.message-body {
+  white-space: pre-wrap;
+}
+
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  opacity: 0.62;
+}
+
+.message.user .message-actions {
+  justify-content: flex-end;
+}
+
+.message.assistant .message-actions {
+  justify-content: flex-start;
+}
+
+.message-actions button {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.message-actions button:hover {
+  color: var(--accent-strong);
+  background: rgb(64 90 138 / 8%);
 }
 
 .message.system {

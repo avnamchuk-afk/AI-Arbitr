@@ -16,11 +16,14 @@ import {
   LogOut,
   Menu,
   Plus,
+  RefreshCw,
   Scale,
   Search,
   Send,
   ShieldCheck,
   Sparkles,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
 } from "lucide-react";
 import "./styles.css";
@@ -447,6 +450,29 @@ function PrivacyPage() {
         </footer>
       </article>
     </main>
+  );
+}
+
+function MessageActions({ message }) {
+  if (!["assistant", "user"].includes(message.role)) return null;
+  const copyMessage = () => navigator.clipboard?.writeText(message.content || "");
+  return (
+    <div className="message-actions" aria-label="Действия с сообщением">
+      <button onClick={copyMessage} title="Копировать" aria-label="Копировать сообщение">
+        <Copy size={14} />
+      </button>
+      <button title="Хороший ответ" aria-label="Хороший ответ">
+        <ThumbsUp size={14} />
+      </button>
+      <button title="Плохой ответ" aria-label="Плохой ответ">
+        <ThumbsDown size={14} />
+      </button>
+      {message.role === "assistant" && (
+        <button title="Обновить ответ" aria-label="Обновить ответ">
+          <RefreshCw size={14} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1367,7 +1393,10 @@ function App() {
                   }
                   return (
                     <article key={index} className={`message ${message.role}`}>
-                      {message.role === "system" ? <em>{message.content}</em> : message.content}
+                      <div className="message-body">
+                        {message.role === "system" ? <em>{message.content}</em> : message.content}
+                      </div>
+                      <MessageActions message={message} />
                     </article>
                   );
                 })}
