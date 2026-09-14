@@ -2205,9 +2205,10 @@ def approve_version(session_id: str, user: User = Depends(get_current_user), db:
             .all()
         )
         pdf_bytes = build_contract_pdf(session, latest_version, participants, messages)
+        certificate_bytes = build_interaction_certificate_pdf(session, latest_version, participants, messages)
         for item in participants:
             if item.user and not is_guest_user(item.user):
-                send_contract_signed_notice(item.user.email, session.title, pdf_bytes)
+                send_contract_signed_notice(item.user.email, session.title, pdf_bytes, certificate_bytes)
     return {"finalized": both_approved, "status": session.status}
 
 
