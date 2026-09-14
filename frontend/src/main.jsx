@@ -420,7 +420,7 @@ function LogoMark({ compact = false, onClick }) {
   );
 }
 
-function KeyTermsCard({ terms }) {
+function KeyTermsCard({ terms, onTermClick }) {
   const visibleTerms = (terms || []).filter((term) => term.value && term.value !== "не указано");
   if (!visibleTerms.length) return null;
   return (
@@ -428,7 +428,12 @@ function KeyTermsCard({ terms }) {
       <strong>Ключевые условия</strong>
       <div className="key-terms-list">
         {visibleTerms.map((term, index) => (
-          <div className="key-term" key={`${term.label}-${index}`}>
+          <button
+            className="key-term"
+            key={`${term.label}-${index}`}
+            type="button"
+            onClick={() => onTermClick?.(term)}
+          >
             <span className="key-check">
               <Check size={14} />
             </span>
@@ -436,7 +441,7 @@ function KeyTermsCard({ terms }) {
               <small>{term.label}</small>
               <p>{term.value}</p>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </section>
@@ -470,22 +475,25 @@ function PrivacyPage() {
   );
 }
 
-function MessageActions({ message }) {
+function MessageActions({ message, onToast }) {
   if (!["assistant", "user"].includes(message.role)) return null;
-  const copyMessage = () => navigator.clipboard?.writeText(message.content || "");
+  const copyMessage = () => {
+    navigator.clipboard?.writeText(message.content || "");
+    onToast?.("Сообщение скопировано");
+  };
   return (
     <div className="message-actions" aria-label="Действия с сообщением">
       <button onClick={copyMessage} title="Копировать" aria-label="Копировать сообщение">
         <Copy size={14} />
       </button>
-      <button title="Хороший ответ" aria-label="Хороший ответ">
+      <button title="Хороший ответ" aria-label="Хороший ответ" onClick={() => onToast?.("Спасибо, учту оценку")}>
         <ThumbsUp size={14} />
       </button>
-      <button title="Плохой ответ" aria-label="Плохой ответ">
+      <button title="Плохой ответ" aria-label="Плохой ответ" onClick={() => onToast?.("Понял, этот ответ можно улучшить")}>
         <ThumbsDown size={14} />
       </button>
       {message.role === "assistant" && (
-        <button title="Обновить ответ" aria-label="Обновить ответ">
+        <button title="Обновить ответ" aria-label="Обновить ответ" onClick={() => onToast?.("Перегенерацию ответа добавим следующим шагом")}>
           <RefreshCw size={14} />
         </button>
       )}
@@ -502,6 +510,8 @@ function App() {
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [contractPreviewOpen, setContractPreviewOpen] = useState(false);
+  const [toast, setToast] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -589,6 +599,12 @@ function App() {
   useEffect(() => {
     localStorage.setItem("ai-arbitr-draft", draft);
   }, [draft]);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(""), 2200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     if (!authed) return;
@@ -962,6 +978,11 @@ function App() {
     setQuestionResolved(false);
   }
 
+  function showCurrentContract(term) {
+    setContractPreviewOpen(true);
+    setToast(term ? `Открыл текущую версию: ${term.label}` : "Открыл текущую версию договора");
+  }
+
   function downloadCertificate() {
     if (!currentSession) return;
     window.open(`${API_URL}/sessions/${currentSession.id}/certificate.pdf`, "_blank", "noopener,noreferrer");
@@ -1033,6 +1054,9 @@ function App() {
         : chatMode === "dispute"
           ? "Опишите, что произошло: кто, когда, какое условие нарушил"
           : "Например: составь договор найма квартиры";
+  const composerHint = hasContractVersion
+    ? "Можно задать вопрос, добавить условие или написать email второй стороны для согласования"
+    : "Напишите коротко, какой договор нужно составить";
 
   if (!authReady) {
     return (
@@ -1422,6 +1446,7 @@ function App() {
         </div>
       </aside>
       <section className="chat-area">
+        {toast && <div className="toast">{toast}</div>}
         {!currentSession ? (
           <div className="empty-state">
             <LogoMark onClick={() => setAboutOpen(true)} />
@@ -1454,7 +1479,7 @@ function App() {
                       <div className="message-body">
                         {message.role === "system" ? <em>{message.content}</em> : message.content}
                       </div>
-                      <MessageActions message={message} />
+                      <MessageActions message={message} onToast={setToast} />
                     </article>
                   );
                 })}
@@ -1469,6 +1494,17 @@ function App() {
                     </div>
                     <p>{thinkingStep || "Я думаю..."}</p>
                   </article>
+                )}
+                {hasContractVersion && contractPreviewOpen && (
+                  <section className="message assistant contract-preview">
+                    <div className="preview-head">
+                      <strong>Текущая версия договора</strong>
+                      <button type="button" onClick={() => setContractPreviewOpen(false)} aria-label="Скрыть договор">
+                        Скрыть
+                      </button>
+                    </div>
+                    <article>{sessionDetail?.latest_version?.content}</article>
+                  </section>
                 )}
                 {hasContractVersion && !isFinalized && (
                   <section className="message assistant chat-actions">
@@ -1510,7 +1546,7 @@ function App() {
                           Введите данные второй стороны и email. На него будет направлена ссылка для просмотра
                           договора и подтверждения согласия без регистрации.
                         </p>
-                        <KeyTermsCard terms={sessionDetail?.key_terms} />
+                        <KeyTermsCard terms={sessionDetail?.key_terms} onTermClick={showCurrentContract} />
                         <div className="party-form">
                           <p className="form-hint">
                             В договоре сейчас стоят игровые данные сторон для удобного чтения.
@@ -1535,6 +1571,9 @@ function App() {
                         <div className="action-row">
                           <button onClick={startQuestion}>Задать вопрос по договору</button>
                           <button onClick={startAddition}>Дополнить новым условием</button>
+                          <button onClick={() => showCurrentContract()}>
+                            <FileText size={16} /> Текущая версия
+                          </button>
                           <button onClick={startAgreement}>
                             <Check size={16} /> Согласиться с версией
                           </button>
@@ -1587,7 +1626,7 @@ function App() {
                 <Send size={20} />
               </button>
             </div>
-            <small className="hint">Нажмите Enter для отправки</small>
+            <small className="hint">{composerHint}. Enter для отправки</small>
           </div>
         )}
       </section>
