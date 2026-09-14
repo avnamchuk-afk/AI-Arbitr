@@ -429,22 +429,25 @@ function ModelSelector({ onSoon }) {
   return (
     <label className="model-selector" aria-label="Выбор нейросети">
       <span className="model-status" aria-hidden="true" />
-      <select
-        value="yandexgpt"
-        onChange={(event) => {
-          if (event.target.value !== "yandexgpt") {
-            onSoon?.("Переключение моделей появится позже");
-          }
-          event.target.value = "yandexgpt";
-        }}
-      >
-        <option value="yandexgpt">Яндекс GPT</option>
-        <option value="gigachat" disabled>GigaChat скоро</option>
-        <option value="chatgpt" disabled>ChatGPT скоро</option>
-        <option value="qwen" disabled>Qwen скоро</option>
-        <option value="claude" disabled>Claude скоро</option>
-        <option value="deepseek" disabled>DeepSeek скоро</option>
-      </select>
+      <span className="model-copy">
+        <select
+          value="yandexgpt"
+          onChange={(event) => {
+            if (event.target.value !== "yandexgpt") {
+              onSoon?.("Переключение моделей появится позже");
+            }
+            event.target.value = "yandexgpt";
+          }}
+        >
+          <option value="yandexgpt">YandexGPT latest</option>
+          <option value="gigachat" disabled>GigaChat скоро</option>
+          <option value="chatgpt" disabled>ChatGPT скоро</option>
+          <option value="qwen" disabled>Qwen скоро</option>
+          <option value="claude" disabled>Claude скоро</option>
+          <option value="deepseek" disabled>DeepSeek скоро</option>
+        </select>
+        <small>Foundation Models API</small>
+      </span>
     </label>
   );
 }

@@ -1720,6 +1720,13 @@ button:hover {
   backdrop-filter: var(--blur);
 }
 
+.model-copy {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  flex: 1 1 auto;
+}
+
 .model-status {
   width: 9px;
   height: 9px;
@@ -1736,8 +1743,17 @@ button:hover {
   color: var(--ink);
   background: transparent;
   outline: none;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
+}
+
+.model-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .model-selector option:disabled {
