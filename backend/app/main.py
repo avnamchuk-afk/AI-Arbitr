@@ -42,7 +42,7 @@ from app.services.auth import (
 )
 from app.services.contract_templates import AI_ARBITR_DISPUTE_SECTION, build_housing_rent_contract, build_website_development_contract
 from app.services.email import send_contract_invite, send_contract_signed_notice, send_magic_link, smtp_is_configured
-from app.services.pdf import build_contract_pdf
+from app.services.pdf import build_contract_pdf, build_interaction_certificate_pdf
 from app.services.privacy import contains_passport_like_data
 from app.services.prompts import CONTRACT_SYSTEM_PROMPT, SIMPLE_CONTRACT_SYSTEM_PROMPT, build_dispute_prompt
 from app.services.yandex_gpt import YandexGPTError, ask_yandex_gpt
@@ -2252,6 +2252,40 @@ def request_changes(
         item.approved_version_id = None
     db.commit()
     return {"message": "Правки зафиксированы. Следующим шагом AI сформирует новую версию договора."}
+
+
+@app.get("/sessions/{session_id}/certificate.pdf")
+def download_interaction_certificate(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = get_accessible_session(db, session_id, user)
+    if session.status != SessionStatus.finalized:
+        raise HTTPException(status_code=400, detail="Справка доступна только после подписания договора")
+
+    final_version = (
+        db.query(ContractVersion)
+        .filter(ContractVersion.session_id == session.id, ContractVersion.is_final.is_(True))
+        .order_by(ContractVersion.version_number.desc())
+        .first()
+    )
+    if final_version is None:
+        raise HTTPException(status_code=404, detail="Финальная версия договора не найдена")
+
+    messages = (
+        db.query(Message)
+        .filter(Message.session_id == session.id)
+        .order_by(Message.created_at.asc())
+        .all()
+    )
+    pdf_bytes = build_interaction_certificate_pdf(session, final_version, session.participants, messages)
+    filename = f"ai-arbitr-certificate-{session.id}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/download/{download_token}.pdf")

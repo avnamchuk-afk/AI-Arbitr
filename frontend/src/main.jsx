@@ -914,10 +914,9 @@ function App() {
     setQuestionResolved(false);
   }
 
-  function downloadPdf() {
-    const token = sessionDetail?.session?.download_token || currentSession?.download_token;
-    if (!token) return;
-    window.open(`${API_URL}/download/${token}.pdf`, "_blank", "noopener,noreferrer");
+  function downloadCertificate() {
+    if (!currentSession) return;
+    window.open(`${API_URL}/sessions/${currentSession.id}/certificate.pdf`, "_blank", "noopener,noreferrer");
   }
 
   async function signAsFirstParty() {
@@ -1463,6 +1462,9 @@ function App() {
                     <div className="signed-actions">
                       <button className="dispute-button" onClick={startDispute}>
                         Открыть спор
+                      </button>
+                      <button className="download-button" onClick={downloadCertificate}>
+                        <Download size={16} /> Скачать справку
                       </button>
                       <button className="download-button" onClick={markCompleted}>
                         Договор исполнен
