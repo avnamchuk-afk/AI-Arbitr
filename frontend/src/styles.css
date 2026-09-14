@@ -59,6 +59,74 @@ button:hover {
     linear-gradient(135deg, #edf4f2 0%, #f7f5ef 48%, #eef2f7 100%);
 }
 
+.privacy-page {
+  min-height: 100vh;
+  padding: 22px;
+  background:
+    linear-gradient(135deg, #edf4f2 0%, #f7f5ef 48%, #eef2f7 100%);
+}
+
+.privacy-shell {
+  width: min(900px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 18px;
+}
+
+.privacy-header {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0 6px;
+}
+
+.privacy-header h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(26px, 4vw, 42px);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.privacy-header p,
+.privacy-footer p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.privacy-section {
+  display: grid;
+  gap: 8px;
+  padding: 2px 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.privacy-section h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.privacy-section p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.privacy-footer {
+  display: grid;
+  gap: 10px;
+  padding: 8px 0 24px;
+}
+
+.privacy-footer a {
+  width: fit-content;
+  color: var(--accent-strong);
+  text-decoration: none;
+  font-weight: 650;
+}
+
 .review-shell {
   width: min(920px, 100%);
   margin: 0 auto;
