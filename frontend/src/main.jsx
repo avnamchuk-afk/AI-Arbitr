@@ -809,7 +809,7 @@ function App() {
       setThinkingProgress(100);
       await sleep(450);
       setThinking(false);
-      if (!isQuestion) {
+      if (!isQuestion && data.reasoning) {
         setMessages((items) => [...items, { role: "system", content: data.reasoning || buildReasoningNote(thinkingSteps) }]);
       }
       if (isInitialContract) {
@@ -817,7 +817,11 @@ function App() {
       } else {
         setMessages((items) => [...items, { role: "assistant", content: data.content }]);
       }
-      if (isQuestion) {
+      if (data.next_action === "choose_norm" || data.next_action === "email" || data.next_action === "sent") {
+        setQuestionResolved(false);
+      } else if (data.next_action === "agreement") {
+        setQuestionResolved(false);
+      } else if (isQuestion) {
         setQuestionResolved(true);
       }
       setChatMode("idle");

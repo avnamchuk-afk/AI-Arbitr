@@ -554,6 +554,21 @@ def collect_pending_norms_into_contract(contract_text: str, messages: list[Messa
     return (contract_text.rstrip() + "\n\n" + additional_section).strip()
 
 
+def add_norm_to_contract(contract_text: str, norm: str) -> str:
+    clean_norm = re.sub(r"^\[Номер пункта\]\.\s*", "", norm.strip())
+    if not clean_norm:
+        return contract_text
+    if re.sub(r"\s+", " ", clean_norm.lower())[:120] in re.sub(r"\s+", " ", contract_text.lower()):
+        return contract_text
+
+    additional_section = "ДОПОЛНИТЕЛЬНЫЕ УСЛОВИЯ, СОГЛАСОВАННЫЕ В ХОДЕ ОБСУЖДЕНИЯ\n\n"
+    additional_section += f"[Номер пункта]. {clean_norm}"
+    dispute_index = contract_text.find("8. ПОРЯДОК РАЗРЕШЕНИЯ СПОРОВ")
+    if dispute_index >= 0:
+        return (contract_text[:dispute_index].rstrip() + "\n\n" + additional_section + "\n\n" + contract_text[dispute_index:]).strip()
+    return (contract_text.rstrip() + "\n\n" + additional_section).strip()
+
+
 def build_contract_number(version_number: int) -> str:
     return f"{now_utc().strftime('%d%m%y')}/{version_number}"
 
@@ -620,7 +635,17 @@ def extract_placeholders(contract_text: str) -> list[str]:
 
 def is_affirmative_message(text: str) -> bool:
     normalized = text.strip().lower()
-    return normalized in {"да", "давай", "ок", "окей", "согласен", "согласна", "переходим", "да, переходим"}
+    return normalized in {"да", "давай", "ок", "окей", "согласен", "согласна", "переходим", "да, переходим", "направляем"}
+
+
+def is_short_option(text: str) -> bool:
+    normalized = text.strip().lower().replace("ё", "е")
+    return normalized in {"краткая", "краткую", "1", "первую", "вариант 1"}
+
+
+def is_expanded_option(text: str) -> bool:
+    normalized = text.strip().lower().replace("ё", "е")
+    return normalized in {"расширенная", "расширенную", "2", "вторую", "вариант 2"}
 
 
 def last_assistant_message(messages: list[Message]) -> str:
@@ -779,6 +804,11 @@ def build_demo_replacement_request() -> str:
         "- email: \n\n"
         "Я проверю формат и изменю вымышленные данные в договоре."
     )
+
+
+def extract_email_from_text(text: str) -> str | None:
+    match = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-zА-Яа-я]{2,}", text)
+    return match.group(0) if match else None
 
 
 def fill_demo_contract_data(contract_text: str, values: dict[str, str]) -> str:
@@ -987,6 +1017,81 @@ async def propose_contract_norm(contract_text: str, last_answer: str, dialogue: 
         },
     ]
     return await ask_yandex_gpt(prompt)
+
+
+async def propose_contract_norm_options(contract_text: str, last_answer: str, dialogue: str) -> str:
+    rule_based = build_rule_based_contract_norm(dialogue)
+    if rule_based:
+        norm = rule_based.split("Предлагаю такую редакцию нормы:", 1)[-1]
+        norm = norm.replace("Добавить это условие в договор?", "").strip()
+        return (
+            "Да, можно добавить. Предлагаю две редакции.\n\n"
+            "Вариант 1 — краткий:\n"
+            f"{norm}\n\n"
+            "Вариант 2 — расширенный:\n"
+            f"{norm} Стороны подтверждают, что такое условие направлено на баланс интересов сторон, "
+            "предсказуемость исполнения договора и предотвращение спора о порядке применения соответствующего условия.\n\n"
+            "Выберите: краткая, расширенная или пришлите свою редакцию."
+        )
+
+    prompt = [
+        {
+            "role": "system",
+            "text": (
+                "Ты договорный юрист. Пользователь согласился добавить в договор условие, "
+                "которое ты предложил после ответа на вопрос. "
+                "Сформулируй две редакции одной и той же нормы: краткую и расширенную. "
+                "Не выводи полный договор. Не утверждай, что норма уже добавлена. "
+                "Формат строго такой:\n"
+                "Да, можно добавить. Предлагаю две редакции.\n\n"
+                "Вариант 1 — краткий:\n[текст нормы]\n\n"
+                "Вариант 2 — расширенный:\n[текст нормы]\n\n"
+                "Выберите: краткая, расширенная или пришлите свою редакцию."
+            ),
+        },
+        {
+            "role": "user",
+            "text": (
+                f"Текущая версия договора:\n{contract_text}\n\n"
+                f"Последний ответ помощника:\n{last_answer}\n\n"
+                f"Последний диалог:\n{dialogue}"
+            ),
+        },
+    ]
+    return await ask_yandex_gpt(prompt)
+
+
+def extract_norm_option(options_text: str, option: str) -> str | None:
+    if option == "short":
+        pattern = r"Вариант 1\s*[—-]\s*кратк\w*:\s*(.*?)(?:\n\s*Вариант 2\s*[—-]\s*расшир|\Z)"
+    else:
+        pattern = r"Вариант 2\s*[—-]\s*расшир\w*:\s*(.*?)(?:\n\s*Выберите|\Z)"
+    match = re.search(pattern, options_text, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return None
+    norm = match.group(1).strip()
+    return norm or None
+
+
+def build_custom_norm_review(custom_text: str) -> str:
+    return (
+        "Проверяю вашу редакцию:\n"
+        "• не нарушает ли она баланс сторон;\n"
+        "• достаточно ли ясно описывает обязанность;\n"
+        "• можно ли будет применить ее на практике.\n\n"
+        "Редакция выглядит допустимой для включения в договор.\n\n"
+        f"{custom_text.strip()}\n\n"
+        "Фиксирую новый пункт договора.\n\n"
+        "Переходим к согласованию?"
+    )
+
+
+def build_norm_saved_answer(norm: str) -> str:
+    return (
+        "Фиксирую новый пункт договора.\n\n"
+        f"{norm.strip()}\n\n"
+        "Переходим к согласованию?"
+    )
 
 
 def infer_session_title(content: str) -> str:
@@ -1843,6 +1948,124 @@ async def send_message(
     db.add(Message(session_id=session.id, role=MessageRole.user, content=payload.content))
     db.flush()
 
+    last_assistant_before_answer = last_assistant_message(prior_messages)
+    last_assistant_lower = last_assistant_before_answer.lower()
+
+    if (
+        latest_version_before_answer is not None
+        and not is_contract_update
+        and "введите e-mail второй стороны" in last_assistant_lower
+    ):
+        party_email = extract_email_from_text(payload.content)
+        if not party_email:
+            answer = "Не вижу email второй стороны. Пришлите его одним сообщением, например: name@example.com."
+            db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+            db.commit()
+            return {"content": answer, "contract_saved": False, "reasoning": "", "next_action": "email"}
+        if is_guest_user(user):
+            answer = (
+                "Чтобы отправить ссылку второй стороне, сначала нужно сохранить договор за вашей почтой. "
+                "Нажмите «Вход» и укажите свой email, затем вернитесь в этот чат и отправьте email второй стороны еще раз."
+            )
+            db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+            db.commit()
+            return {"content": answer, "contract_saved": False, "reasoning": "", "next_action": "auth_required"}
+
+        if session.invite_token is None:
+            session.invite_token = uuid.uuid4()
+            db.flush()
+        check_daily_rate_limit(db, request, "contract_invite", user=user)
+        latest_version = get_latest_version(db, session)
+        if latest_version is None:
+            raise HTTPException(status_code=400, detail="Нет версии договора для согласования")
+        invited_user = db.query(User).filter(User.email == party_email).one_or_none()
+        if invited_user is None:
+            invited_user = User(email=party_email)
+            db.add(invited_user)
+            db.flush()
+        party_2 = (
+            db.query(ContractParticipant)
+            .filter(ContractParticipant.session_id == session.id, ContractParticipant.role == ParticipantRole.party_2)
+            .one()
+        )
+        party_2.user_id = invited_user.id
+        invite_link = f"{settings.app_base_url}/review/{session.invite_token}"
+        pdf_link = f"{settings.api_base_url}/review/{session.invite_token}.pdf"
+        send_contract_invite(party_email, invite_link, session.title, pdf_link)
+        db.add(
+            Message(
+                session_id=session.id,
+                role=MessageRole.system,
+                content=f"VERSION_SENT|{latest_version.version_number}|{party_email}",
+            )
+        )
+        answer = f"Версия № {latest_version.version_number} направлена на согласование на адрес {party_email}."
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {
+            "content": answer,
+            "contract_saved": False,
+            "reasoning": "",
+            "next_action": "sent",
+            "invite_link": invite_link,
+        }
+
+    if (
+        latest_version_before_answer is not None
+        and not is_contract_update
+        and is_affirmative_message(payload.content)
+        and "переходим к согласованию" in last_assistant_lower
+    ):
+        latest_version = get_latest_version(db, session)
+        version_number = latest_version.version_number if latest_version else 1
+        reasoning = (
+            "Что я делаю:\n"
+            f"• Готовлю версию № {version_number} для согласования.\n"
+            "• Проверяю, что добавленные условия учтены.\n"
+            "• Версия готова к отправке второй стороне."
+        )
+        answer = (
+            f"Готовлю версию № {version_number}.\n\n"
+            "Версия готова.\n\n"
+            "Введите e-mail второй стороны, на который направить ссылку для согласования."
+        )
+        db.add(Message(session_id=session.id, role=MessageRole.system, content=reasoning))
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {"content": answer, "contract_saved": False, "reasoning": reasoning, "next_action": "email"}
+
+    if (
+        latest_version_before_answer is not None
+        and not is_contract_update
+        and "выберите: краткая, расширенная или пришлите свою редакцию" in last_assistant_lower
+    ):
+        selected_norm = None
+        reasoning = ""
+        if is_short_option(payload.content):
+            selected_norm = extract_norm_option(last_assistant_before_answer, "short")
+        elif is_expanded_option(payload.content):
+            selected_norm = extract_norm_option(last_assistant_before_answer, "expanded")
+        else:
+            selected_norm = payload.content.strip()
+            reasoning = (
+                "Что я делаю:\n"
+                "• Пользователь предложил свою редакцию условия.\n"
+                "• Проверяю, не нарушает ли она баланс сторон.\n"
+                "• Проверяю ясность формулировки и возможность применить ее на практике."
+            )
+
+        if not selected_norm:
+            selected_norm = payload.content.strip()
+
+        updated_contract = add_norm_to_contract(latest_version_before_answer.content, selected_norm)
+        save_contract_version(db, session, updated_contract)
+        answer = build_custom_norm_review(selected_norm) if reasoning else build_norm_saved_answer(selected_norm)
+        if reasoning:
+            db.add(Message(session_id=session.id, role=MessageRole.system, content=reasoning))
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {"content": answer, "contract_saved": True, "reasoning": reasoning, "next_action": "agreement"}
+
     if latest_version_before_answer is None and not is_contract_update and needs_service_type_clarification(payload.content):
         answer = build_service_type_clarification(payload.content)
         db.add(
@@ -1887,20 +2110,26 @@ async def send_message(
         and ("хотите включить" in recent_messages_text.lower() or build_rule_based_contract_norm(recent_messages_text))
     ):
         recent_dialogue = format_recent_dialogue(prior_messages)
-        last_assistant = last_assistant_message(prior_messages)
         try:
-            answer = await propose_contract_norm(latest_version_before_answer.content, last_assistant, recent_dialogue)
+            answer = await propose_contract_norm_options(
+                latest_version_before_answer.content,
+                last_assistant_before_answer,
+                recent_dialogue,
+            )
         except YandexGPTError:
             answer = (
-                "Да, это условие стоит добавить. Предлагаю такую редакцию:\n\n"
-                "[Номер пункта]. Стороны согласовали, что соответствующее действие допускается только "
-                "по предварительному письменному соглашению сторон с указанием срока, порядка уведомления "
-                "и последствий нарушения.\n\n"
-                "Добавить это условие в договор?"
+                "Да, можно добавить. Предлагаю две редакции.\n\n"
+                "Вариант 1 — краткий:\n"
+                "[Номер пункта]. Соответствующее действие допускается только по предварительному письменному соглашению сторон.\n\n"
+                "Вариант 2 — расширенный:\n"
+                "[Номер пункта]. Соответствующее действие допускается только по предварительному письменному соглашению сторон "
+                "с указанием срока, порядка уведомления и последствий нарушения. Одностороннее изменение условия не допускается, "
+                "если иное прямо не предусмотрено законом или настоящим Договором.\n\n"
+                "Выберите: краткая, расширенная или пришлите свою редакцию."
             )
         db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
         db.commit()
-        return {"content": answer, "contract_saved": False, "reasoning": ""}
+        return {"content": answer, "contract_saved": False, "reasoning": "", "next_action": "choose_norm"}
 
     if latest_version_before_answer is not None and not is_contract_update and is_deposit_split_question(payload.content):
         answer = build_deposit_split_answer(latest_version_before_answer.content)
@@ -2039,6 +2268,11 @@ async def send_message(
                             "Запрещено возвращать полный текст договора, "
                             "разделы договора, преамбулу, реквизиты или новую редакцию. "
                             "Сначала дай прямой ответ, затем кратко объясни почему. "
+                            "Ответ строй только по одной из трех схем:\n"
+                            "1) Если вопрос прямо урегулирован договором: «Это договором предусмотрено» и короткая цитата пункта.\n"
+                            "2) Если договор молчит, но вопрос урегулирован ГК РФ: «Это договором прямо не предусмотрено, "
+                            "но применяется норма закона» и краткая ссылка на статью ГК РФ.\n"
+                            "3) Если есть риск неопределенности: объясни риск и предложи добавить ясное условие.\n"
                             f"{build_contract_gap_instruction()} "
                             "Если вопрос про изменение цены, срок, расторжение, депозит или ответственность, "
                             "обязательно проверь, что написано в договоре, и отдельно укажи, зависит ли ответ "
