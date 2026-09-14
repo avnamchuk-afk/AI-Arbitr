@@ -1726,13 +1726,14 @@ function App() {
           <div className="empty-state">
             <LogoMark onClick={() => setAboutOpen(true)} />
             <div className="hero-flow" aria-label="Клиентский путь AI-Arbitr">
-              <span>Составить договор</span>
+              <strong>Бесплатно в смартфоне:</strong>
+              <span>Составить</span>
               <i aria-hidden="true">→</i>
               <span>Согласовать</span>
               <i aria-hidden="true">→</i>
-              <span>Подписать PDF</span>
+              <span>Подписать договор</span>
               <i aria-hidden="true">→</i>
-              <span>Исполнить или открыть спор</span>
+              <span>Разрешить спор</span>
             </div>
             <button onClick={createSession}>
               <Plus size={18} /> Новый договор

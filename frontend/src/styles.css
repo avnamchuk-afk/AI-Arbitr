@@ -1194,6 +1194,11 @@ button:hover {
   backdrop-filter: var(--blur);
 }
 
+.hero-flow strong {
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+
 .hero-flow i {
   color: var(--accent-strong);
   font-style: normal;
