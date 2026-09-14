@@ -392,6 +392,39 @@ function getAdditionPlaceholder(session, detail) {
   return "Например: добавить условие о сроках, оплате или ответственности";
 }
 
+const PROJECT_TEAM = [
+  {
+    name: "Alex",
+    role: "Architecture & Legal Methodology",
+    text: "Системная логика, legal tech и промпт-инжиниринг.",
+  },
+  {
+    name: "Артур",
+    role: "Legal Counsel",
+    text: "Договорное право, юридическая валидность и LegalTech-коммуникация.",
+  },
+  {
+    name: "Лена",
+    role: "Finance & Unit Economics",
+    text: "Финансовая модель, устойчивость и unit-экономика SaaS.",
+  },
+  {
+    name: "Ника",
+    role: "Lead IT & AI Development",
+    text: "AI-интеграции, безопасность, iOS/Android и инфраструктура.",
+  },
+  {
+    name: "Николай",
+    role: "Growth & Marketing",
+    text: "Рост, digital-коммуникации и развитие сообщества.",
+  },
+  {
+    name: "София",
+    role: "Behavioral Psychology",
+    text: "Поведенческая психология, медиация и разрешение конфликтов.",
+  },
+];
+
 function LogoMark({ compact = false, onClick }) {
   const content = (
     <>
@@ -1332,6 +1365,25 @@ function App() {
               <li>После вопросов можно добавить краткую или расширенную редакцию условия.</li>
               <li>Финальный договор и справка электронного взаимодействия уходят сторонам на email.</li>
             </ul>
+            <section className="team-section">
+              <h2>Команда проекта</h2>
+              <p>Технологии, право, финансы и поведенческая психология в одной команде.</p>
+              <div className="team-grid">
+                {PROJECT_TEAM.map((member) => (
+                  <article className="team-card" key={member.name}>
+                    <strong>{member.name}</strong>
+                    <span>{member.role}</span>
+                    <p>{member.text}</p>
+                    <div className="team-links" aria-label={`Контакты: ${member.name}`}>
+                      <button type="button">Max</button>
+                      <button type="button">TG</button>
+                      <button type="button">WA</button>
+                      <button type="button">VK</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
             <button className="modal-secondary" type="button" onClick={() => setAboutOpen(false)}>
               Понятно
             </button>

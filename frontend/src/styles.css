@@ -620,7 +620,7 @@ button:hover {
 }
 
 .about-modal {
-  width: min(480px, 100%);
+  width: min(720px, 100%);
 }
 
 .about-grid {
@@ -646,6 +646,66 @@ button:hover {
   display: grid;
   gap: 6px;
   padding-left: 18px;
+}
+
+.team-section {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.team-section h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.team-card {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgb(64 90 138 / 18%);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgb(255 255 255 / 52%);
+}
+
+.team-card strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.team-card span {
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.team-card p {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.team-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.team-links button {
+  min-height: 24px;
+  border: 1px solid rgb(64 90 138 / 18%);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: var(--muted);
+  background: rgb(255 255 255 / 54%);
+  box-shadow: none;
+  font-size: 11px;
 }
 
 .stats-modal {
@@ -1041,6 +1101,31 @@ button:hover {
   gap: 16px;
   text-align: center;
   padding: 24px 12px;
+}
+
+.empty-state .brand-mark {
+  justify-self: center;
+  border: 1px solid rgb(64 90 138 / 18%);
+  border-radius: 14px;
+  padding: 10px 14px;
+  color: #111827;
+  background: rgb(255 255 255 / 78%);
+  box-shadow: 0 16px 42px rgb(23 34 47 / 12%);
+  backdrop-filter: var(--blur);
+}
+
+.empty-state .brand-word {
+  color: #111827;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 80%);
+}
+
+.empty-state .brand-icon {
+  background: rgb(255 255 255 / 82%);
+  border-color: rgb(64 90 138 / 34%);
+}
+
+.empty-state .brand-beta {
+  background: rgb(236 240 248 / 90%);
 }
 
 .empty-state p {
@@ -1582,6 +1667,10 @@ button:hover {
     width: 44px;
     height: 44px;
     flex: 0 0 44px;
+  }
+
+  .team-grid {
+    grid-template-columns: 1fr;
   }
 
   .sidebar-backdrop {
