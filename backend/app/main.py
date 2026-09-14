@@ -1129,6 +1129,24 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/stats")
+def stats(db: Session = Depends(get_db)):
+    real_users = db.query(User).filter(~User.email.like(f"%{GUEST_EMAIL_SUFFIX}")).count()
+    guest_users = db.query(User).filter(User.email.like(f"%{GUEST_EMAIL_SUFFIX}")).count()
+    total_contracts = db.query(ContractSession).count()
+    finalized_contracts = db.query(ContractSession).filter(ContractSession.status == SessionStatus.finalized).count()
+    review_contracts = db.query(ContractSession).filter(ContractSession.status == SessionStatus.in_review).count()
+    draft_contracts = db.query(ContractSession).filter(ContractSession.status == SessionStatus.draft).count()
+    return {
+        "users": real_users,
+        "guest_users": guest_users,
+        "contracts": total_contracts,
+        "finalized_contracts": finalized_contracts,
+        "review_contracts": review_contracts,
+        "draft_contracts": draft_contracts,
+    }
+
+
 def set_auth_cookie(response: Response, user: User) -> None:
     use_secure_cookie = settings.app_base_url.startswith("https://")
     response.set_cookie(

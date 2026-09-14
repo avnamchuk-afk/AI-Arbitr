@@ -9,6 +9,7 @@ import {
   Copy,
   Download,
   FileText,
+  BarChart3,
   Globe2,
   Hammer,
   HardHat,
@@ -510,6 +511,9 @@ function App() {
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [contractPreviewOpen, setContractPreviewOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [accepted, setAccepted] = useState(false);
@@ -701,6 +705,24 @@ function App() {
       setSessions(Array.isArray(data) ? data : []);
     } catch {
       setSessions([]);
+    }
+  }
+
+  async function openStats() {
+    setStatsOpen(true);
+    setStatsLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/stats`, { credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        setStats(data);
+      } else {
+        setToast(data.detail || "Не удалось загрузить статистику");
+      }
+    } catch {
+      setToast("Не удалось загрузить статистику");
+    } finally {
+      setStatsLoading(false);
     }
   }
 
@@ -1203,6 +1225,9 @@ function App() {
           <Menu size={20} />
         </button>
         <LogoMark compact onClick={() => setAboutOpen(true)} />
+        <button className="mobile-stat" onClick={openStats} aria-label="Статистика сервиса">
+          <BarChart3 size={20} />
+        </button>
       </div>
       {sidebarOpen && (
         <button className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-label="Закрыть меню" />
@@ -1313,6 +1338,42 @@ function App() {
           </section>
         </div>
       )}
+      {statsOpen && (
+        <div className="auth-modal-backdrop" onClick={() => setStatsOpen(false)}>
+          <section className="help-modal stats-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="stats-head">
+              <BarChart3 size={22} />
+              <h1>Статистика AI-Arbitr</h1>
+            </div>
+            {statsLoading ? (
+              <p>Загружаю статистику...</p>
+            ) : (
+              <div className="stats-grid">
+                <div>
+                  <span>{stats?.users ?? 0}</span>
+                  <small>пользователей</small>
+                </div>
+                <div>
+                  <span>{stats?.contracts ?? 0}</span>
+                  <small>договоров</small>
+                </div>
+                <div>
+                  <span>{stats?.finalized_contracts ?? 0}</span>
+                  <small>подписано</small>
+                </div>
+                <div>
+                  <span>{stats?.review_contracts ?? 0}</span>
+                  <small>на согласовании</small>
+                </div>
+              </div>
+            )}
+            <p>Показываются только агрегированные числа без персональных данных.</p>
+            <button className="modal-secondary" type="button" onClick={() => setStatsOpen(false)}>
+              Закрыть
+            </button>
+          </section>
+        </div>
+      )}
       <aside className={sidebarOpen ? "sidebar open" : "sidebar"}>
         <div className="account">
           <strong>{isGuest ? "Гостевой режим" : email}</strong>
@@ -1348,6 +1409,9 @@ function App() {
               <LogOut size={16} /> Выход
             </button>
           )}
+          <button className="stats-button" onClick={openStats}>
+            <BarChart3 size={16} /> Статистика
+          </button>
         </div>
         <button className="new-contract" onClick={createSession}>
           <Plus size={18} /> Новый договор

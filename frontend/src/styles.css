@@ -648,6 +648,43 @@ button:hover {
   padding-left: 18px;
 }
 
+.stats-modal {
+  width: min(440px, 100%);
+}
+
+.stats-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stats-grid div {
+  display: grid;
+  gap: 2px;
+  border: 1px solid rgb(64 90 138 / 18%);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgb(255 255 255 / 52%);
+}
+
+.stats-grid span {
+  color: var(--accent-strong);
+  font-size: 28px;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.stats-grid small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .modal-secondary {
   border: 1px solid var(--line);
   color: var(--muted);
@@ -1476,7 +1513,8 @@ button:hover {
 }
 
 .composer button,
-.mobile-menu {
+.mobile-menu,
+.mobile-stat {
   width: 48px;
   height: 48px;
   display: grid;
@@ -1505,6 +1543,10 @@ button:hover {
   display: none;
 }
 
+.mobile-stat {
+  display: none;
+}
+
 .sidebar-backdrop {
   display: none;
 }
@@ -1527,6 +1569,15 @@ button:hover {
 
   .mobile-menu {
     display: grid;
+    position: static;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .mobile-stat {
+    display: grid;
+    margin-left: auto;
     position: static;
     width: 44px;
     height: 44px;
