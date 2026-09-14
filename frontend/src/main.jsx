@@ -1725,11 +1725,15 @@ function App() {
         {!currentSession ? (
           <div className="empty-state">
             <LogoMark onClick={() => setAboutOpen(true)} />
-            <p>
-              Работаю на базе Яндекс GPT. Помогу составить справедливый договор в соответствии
-              с ГК и обычной практикой, согласовать его с другой стороной, напомнить о сроках
-              и разрешить спор, если он возникнет.
-            </p>
+            <div className="hero-flow" aria-label="Клиентский путь AI-Arbitr">
+              <span>Составить договор</span>
+              <i aria-hidden="true">→</i>
+              <span>Согласовать</span>
+              <i aria-hidden="true">→</i>
+              <span>Подписать PDF</span>
+              <i aria-hidden="true">→</i>
+              <span>Исполнить или открыть спор</span>
+            </div>
             <button onClick={createSession}>
               <Plus size={18} /> Новый договор
             </button>

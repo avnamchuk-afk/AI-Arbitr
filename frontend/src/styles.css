@@ -1171,6 +1171,35 @@ button:hover {
   font-size: 16px;
 }
 
+.hero-flow {
+  justify-self: center;
+  max-width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.hero-flow span {
+  border: 1px solid rgb(64 90 138 / 18%);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--ink);
+  background: rgb(255 255 255 / 56%);
+  box-shadow: 0 8px 22px rgb(23 34 47 / 5%);
+  backdrop-filter: var(--blur);
+}
+
+.hero-flow i {
+  color: var(--accent-strong);
+  font-style: normal;
+  font-weight: 760;
+}
+
 .messages {
   flex: 1;
   overflow: auto;
@@ -1799,6 +1828,15 @@ button:hover {
 
   .empty-state p {
     font-size: 15px;
+  }
+
+  .hero-flow {
+    gap: 5px;
+    font-size: 12px;
+  }
+
+  .hero-flow span {
+    padding: 6px 8px;
   }
 
   .party-form {
