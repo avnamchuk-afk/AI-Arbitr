@@ -1354,16 +1354,20 @@ function App() {
                   <small>пользователей</small>
                 </div>
                 <div>
-                  <span>{stats?.contracts ?? 0}</span>
-                  <small>договоров</small>
+                  <span>{stats?.generated_contracts ?? 0}</span>
+                  <small>сгенерировано</small>
                 </div>
                 <div>
-                  <span>{stats?.finalized_contracts ?? 0}</span>
+                  <span>{stats?.signed_contracts ?? 0}</span>
                   <small>подписано</small>
                 </div>
                 <div>
-                  <span>{stats?.review_contracts ?? 0}</span>
-                  <small>на согласовании</small>
+                  <span>{stats?.disputed_contracts ?? 0}</span>
+                  <small>оспорено</small>
+                </div>
+                <div>
+                  <span>{stats?.closed_without_dispute_contracts ?? 0}</span>
+                  <small>исполнено без спора</small>
                 </div>
               </div>
             )}

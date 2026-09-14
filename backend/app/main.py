@@ -1133,17 +1133,43 @@ def health():
 def stats(db: Session = Depends(get_db)):
     real_users = db.query(User).filter(~User.email.like(f"%{GUEST_EMAIL_SUFFIX}")).count()
     guest_users = db.query(User).filter(User.email.like(f"%{GUEST_EMAIL_SUFFIX}")).count()
-    total_contracts = db.query(ContractSession).count()
-    finalized_contracts = db.query(ContractSession).filter(ContractSession.status == SessionStatus.finalized).count()
-    review_contracts = db.query(ContractSession).filter(ContractSession.status == SessionStatus.in_review).count()
-    draft_contracts = db.query(ContractSession).filter(ContractSession.status == SessionStatus.draft).count()
+    generated_ids = {
+        row[0]
+        for row in db.query(ContractVersion.session_id)
+        .distinct()
+        .all()
+    }
+    signed_ids = {
+        row[0]
+        for row in db.query(ContractSession.id)
+        .filter(ContractSession.status == SessionStatus.finalized)
+        .all()
+    }
+    disputed_ids = {
+        row[0]
+        for row in db.query(Message.session_id)
+        .filter(Message.role == MessageRole.user, Message.content.startswith("СПОР"))
+        .distinct()
+        .all()
+    }
+    completed_ids = {
+        row[0]
+        for row in db.query(Message.session_id)
+        .filter(
+            Message.role == MessageRole.system,
+            Message.content.startswith("Договор отмечен как исполненный"),
+        )
+        .distinct()
+        .all()
+    }
+    closed_without_dispute_ids = completed_ids - disputed_ids
     return {
         "users": real_users,
         "guest_users": guest_users,
-        "contracts": total_contracts,
-        "finalized_contracts": finalized_contracts,
-        "review_contracts": review_contracts,
-        "draft_contracts": draft_contracts,
+        "generated_contracts": len(generated_ids),
+        "signed_contracts": len(signed_ids),
+        "disputed_contracts": len(disputed_ids),
+        "closed_without_dispute_contracts": len(closed_without_dispute_ids),
     }
 
 
