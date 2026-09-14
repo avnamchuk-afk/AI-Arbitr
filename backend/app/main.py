@@ -2,6 +2,7 @@ import uuid
 import re
 import ipaddress
 import json
+from types import SimpleNamespace
 from io import BytesIO
 from datetime import datetime, time, timezone
 from urllib.request import urlopen
@@ -107,8 +108,9 @@ class InviteRequest(BaseModel):
 
 
 class ReviewApproveRequest(BaseModel):
-    full_name: str
     passport: str
+    phone: str
+    inn: str = ""
     email: EmailStr
     personal_data_accepted: bool
 
@@ -803,6 +805,24 @@ def fill_demo_contract_data(contract_text: str, values: dict[str, str]) -> str:
             updated = updated.replace("ivanov@example.com", email).replace("party2@example.test", email)
         else:
             updated = updated.replace("petrov@example.com", email).replace("party1@example.test", email)
+    return updated
+
+
+def mask_tail(value: str, visible_tail: int = 2) -> str:
+    compact = "".join(ch for ch in value if ch.isalnum())
+    if not compact:
+        return ""
+    if len(compact) <= visible_tail:
+        return "*" * len(compact)
+    return "*" * (len(compact) - visible_tail) + compact[-visible_tail:]
+
+
+def apply_ephemeral_party_data(contract_text: str, payload: ReviewApproveRequest) -> str:
+    updated = contract_text.replace("1111 111111", payload.passport)
+    if payload.phone and "телефон" not in updated.lower():
+        updated += f"\n\nТелефон Стороны 2: {payload.phone}"
+    if payload.inn and "инн" not in updated.lower():
+        updated += f"\nИНН Стороны 2: {payload.inn}"
     return updated
 
 
@@ -1512,7 +1532,7 @@ def finalize_signed_session(db: Session, session: ContractSession, final_version
         )
     session.status = SessionStatus.finalized
     session.finalized_at = now_utc()
-    session.download_token = session.download_token or uuid.uuid4()
+    session.download_token = None
     session.is_completed = True
     final_version.is_final = True
     for participant in session.participants:
@@ -1728,7 +1748,7 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
     if latest_version is None:
         raise HTTPException(status_code=400, detail="Нет версии договора для согласования")
     if session.status == SessionStatus.finalized:
-        return {"finalized": True, "download_token": session.download_token}
+        return {"finalized": True}
 
     participant = (
         db.query(ContractParticipant)
@@ -1749,9 +1769,26 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
         Message(
             session_id=session.id,
             role=MessageRole.system,
-            content=f"VERSION_APPROVED|{latest_version.version_number}|{payload.email}",
+            content=(
+                f"VERSION_APPROVED|{latest_version.version_number}|{payload.email}"
+                f"|passport:{mask_tail(payload.passport, 2)}|phone:{mask_tail(payload.phone, 2)}"
+                f"|inn:{mask_tail(payload.inn, 2) if payload.inn else ''}"
+            ),
         )
     )
+    owner = db.get(User, session.owner_user_id)
+    temp_content = apply_ephemeral_party_data(latest_version.content, payload)
+    temp_version = SimpleNamespace(content=temp_content)
+    messages = (
+        db.query(Message)
+        .filter(Message.session_id == session.id)
+        .order_by(Message.created_at.asc())
+        .all()
+    )
+    pdf_bytes = build_contract_pdf(session, temp_version, session.participants, messages)
+    for email in {str(payload.email), owner.email if owner and not is_guest_user(owner) else ""}:
+        if email:
+            send_contract_signed_notice(email, session.title, pdf_bytes)
     db.commit()
     return {"finalized": False, "party_two_signed": True}
 
@@ -2160,11 +2197,17 @@ def approve_version(session_id: str, user: User = Depends(get_current_user), db:
         finalize_signed_session(db, session, latest_version)
 
     db.commit()
-    if both_approved and session.download_token:
-        pdf_link = f"{settings.api_base_url}/download/{session.download_token}.pdf"
+    if both_approved:
+        messages = (
+            db.query(Message)
+            .filter(Message.session_id == session.id)
+            .order_by(Message.created_at.asc())
+            .all()
+        )
+        pdf_bytes = build_contract_pdf(session, latest_version, participants, messages)
         for item in participants:
             if item.user and not is_guest_user(item.user):
-                send_contract_signed_notice(item.user.email, session.title, pdf_link)
+                send_contract_signed_notice(item.user.email, session.title, pdf_bytes)
     return {"finalized": both_approved, "status": session.status}
 
 
@@ -2213,6 +2256,7 @@ def request_changes(
 
 @app.get("/download/{download_token}.pdf")
 def download_contract_pdf(download_token: str, db: Session = Depends(get_db)):
+    raise HTTPException(status_code=410, detail="Финальный PDF направляется сторонам на email и не хранится по постоянной ссылке")
     session = db.query(ContractSession).filter(ContractSession.download_token == download_token).one_or_none()
     if session is None or session.status != SessionStatus.finalized:
         raise HTTPException(status_code=404, detail="Финализированный договор не найден")

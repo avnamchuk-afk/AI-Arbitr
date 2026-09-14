@@ -31,7 +31,6 @@ const TYPEWRITER_CHUNK_SIZE = 4;
 const TYPEWRITER_MAX_STEPS = 90;
 const MIN_INITIAL_THINKING_MS = 3200;
 const MIN_REGULAR_THINKING_MS = 1500;
-const DEMO_REVIEW_FULL_NAME = "Иванов Иван Иванович";
 const DEMO_REVIEW_PASSPORT = "1111 111111";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -487,8 +486,9 @@ function App() {
   const [afterAuthAction, setAfterAuthAction] = useState("");
   const [reviewData, setReviewData] = useState(null);
   const [reviewForm, setReviewForm] = useState({
-    fullName: DEMO_REVIEW_FULL_NAME,
     passport: DEMO_REVIEW_PASSPORT,
+    phone: "+7 900 000-00-00",
+    inn: "",
     email: "",
     accepted: false,
   });
@@ -589,9 +589,7 @@ function App() {
     event.preventDefault();
     if (!reviewToken) return;
     setReviewNotice("");
-    const demoDataLeft =
-      reviewForm.fullName.trim() === DEMO_REVIEW_FULL_NAME ||
-      reviewForm.passport.trim() === DEMO_REVIEW_PASSPORT;
+    const demoDataLeft = reviewForm.passport.trim() === DEMO_REVIEW_PASSPORT;
     if (
       demoDataLeft &&
       !window.confirm("В форме остались примерные данные Иванова/паспорт 1111 111111. Подписать с ними или сначала заменить на реальные?")
@@ -602,8 +600,9 @@ function App() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        full_name: reviewForm.fullName,
         passport: reviewForm.passport,
+        phone: reviewForm.phone,
+        inn: reviewForm.inn,
         email: reviewForm.email,
         personal_data_accepted: reviewForm.accepted,
       }),
@@ -613,12 +612,11 @@ function App() {
       setReviewNotice(data.detail || "Не удалось подтвердить согласие");
       return;
     }
-    setReviewNotice("Подпись зафиксирована.");
+    setReviewNotice("Подпись зафиксирована. PDF с реквизитами направлен сторонам на email.");
     setReviewData((current) => ({
       ...current,
       finalized: Boolean(data.finalized),
       approved: true,
-      download_token: data.download_token,
     }));
   }
 
@@ -1005,7 +1003,6 @@ function App() {
   }
 
   if (reviewToken) {
-    const finalPdfLink = reviewData?.download_token ? `${API_URL}/download/${reviewData.download_token}.pdf` : "";
     return (
       <main className="review-page">
         <section className="review-shell">
@@ -1022,11 +1019,6 @@ function App() {
                 <a className="review-link-button" href={reviewData.pdf_link} target="_blank" rel="noreferrer">
                   <Download size={16} /> Открыть PDF
                 </a>
-                {finalPdfLink && (
-                  <a className="review-link-button" href={finalPdfLink} target="_blank" rel="noreferrer">
-                    <Download size={16} /> Финальная PDF-версия
-                  </a>
-                )}
               </div>
               <KeyTermsCard terms={reviewData.key_terms} />
               <article className="review-contract">{reviewData.contract}</article>
@@ -1038,19 +1030,19 @@ function App() {
                 <form className="review-form" onSubmit={approveReview}>
                   <h2>Подписать договор</h2>
                   <p className="form-hint">
-                    Поля заполнены примером, чтобы было понятно, какие данные нужны.
-                    Перед подписью замените ФИО и паспорт на свои реальные данные.
+                    Эти данные используются для формирования PDF и отправки сторонам.
+                    После отправки полные реквизиты удаляются, в системе остаются только маски и технический лог.
                   </p>
-                  <input
-                    value={reviewForm.fullName}
-                    onChange={(event) => setReviewForm((form) => ({ ...form, fullName: event.target.value }))}
-                    placeholder="ФИО"
-                    required
-                  />
                   <input
                     value={reviewForm.passport}
                     onChange={(event) => setReviewForm((form) => ({ ...form, passport: event.target.value }))}
-                    placeholder="Паспортные данные"
+                    placeholder="Серия и номер паспорта"
+                    required
+                  />
+                  <input
+                    value={reviewForm.phone}
+                    onChange={(event) => setReviewForm((form) => ({ ...form, phone: event.target.value }))}
+                    placeholder="Телефон"
                     required
                   />
                   <input
@@ -1058,6 +1050,11 @@ function App() {
                     onChange={(event) => setReviewForm((form) => ({ ...form, email: event.target.value }))}
                     placeholder="email@example.com"
                     required
+                  />
+                  <input
+                    value={reviewForm.inn}
+                    onChange={(event) => setReviewForm((form) => ({ ...form, inn: event.target.value }))}
+                    placeholder="ИНН для ИП/МСП, если применимо"
                   />
                   <label className="checkbox-row">
                     <input
@@ -1461,14 +1458,9 @@ function App() {
                     <div>
                       <span>Договор подписан</span>
                       <strong>Договор подписан сторонами</strong>
-                      <p>Подписан сторонами путем согласования: {formatFinalizedDate(sessionDetail?.session || currentSession)}</p>
+                      <p>Подписан сторонами путем согласования: {formatFinalizedDate(sessionDetail?.session || currentSession)}. Финальный PDF направлен сторонам на email.</p>
                     </div>
                     <div className="signed-actions">
-                      {(sessionDetail?.session?.download_token || currentSession.download_token) && (
-                        <button className="download-button" onClick={downloadPdf}>
-                          <Download size={16} /> Открыть PDF
-                        </button>
-                      )}
                       <button className="dispute-button" onClick={startDispute}>
                         Открыть спор
                       </button>

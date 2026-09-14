@@ -60,7 +60,7 @@ def send_contract_invite(email: str, link: str, title: str, pdf_link: str | None
             smtp.send_message(message)
 
 
-def send_contract_signed_notice(email: str, title: str, pdf_link: str) -> None:
+def send_contract_signed_notice(email: str, title: str, pdf_bytes: bytes | None = None) -> None:
     if not smtp_is_configured():
         return
 
@@ -71,10 +71,16 @@ def send_contract_signed_notice(email: str, title: str, pdf_link: str) -> None:
     message.set_content(
         "Здравствуйте!\n\n"
         f"Договор подписан обеими сторонами: {title}.\n\n"
-        "Финальная PDF-версия доступна по ссылке:\n"
-        f"{pdf_link}\n\n"
+        "Финальная PDF-версия приложена к этому письму.\n\n"
         "Если возникнет спор, откройте его через сервис AI-Арбитр.\n"
     )
+    if pdf_bytes:
+        message.add_attachment(
+            pdf_bytes,
+            maintype="application",
+            subtype="pdf",
+            filename="ai-arbitr-final.pdf",
+        )
 
     if settings.smtp_port == 465:
         with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as smtp:
