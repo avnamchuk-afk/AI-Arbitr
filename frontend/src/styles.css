@@ -620,6 +620,30 @@ button:hover {
   padding-left: 18px;
 }
 
+.faq-list {
+  display: grid;
+  gap: 8px;
+}
+
+.faq-list details {
+  border: 1px solid rgb(64 90 138 / 18%);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: rgb(255 255 255 / 48%);
+}
+
+.faq-list summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.faq-list p {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
 .about-modal {
   width: min(720px, 100%);
 }
