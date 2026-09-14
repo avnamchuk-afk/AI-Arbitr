@@ -28,6 +28,7 @@ import "./styles.css";
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
 const TYPEWRITER_DELAY_MS = 10;
 const TYPEWRITER_CHUNK_SIZE = 4;
+const TYPEWRITER_MAX_STEPS = 90;
 const MIN_INITIAL_THINKING_MS = 3200;
 const MIN_REGULAR_THINKING_MS = 1500;
 const DEMO_REVIEW_FULL_NAME = "Иванов Иван Иванович";
@@ -130,8 +131,8 @@ function getThinkingSteps(content) {
       "Выделяю существенные условия: жилое помещение, стороны, срок найма, размер и порядок оплаты.",
       "Добавляю обычные условия: порядок передачи квартиры, коммунальные платежи, ремонт, доступ в помещение, ответственность.",
       "Учитываю спорные места: депозит, просрочка оплаты, повреждение имущества, досрочное расторжение.",
-      "Беру игровые данные, чтобы договор было удобно читать: Наниматель Иванов Иван Иванович, срок 11 месяцев, плата 100 000 рублей.",
-      "Позже заменю игровые данные на реальные данные сторон и условия сделки.",
+      "Добавляю вымышленные данные, чтобы договор сразу было удобно читать.",
+      "Позже заменю вымышленные данные на реальные данные сторон и условия сделки.",
       "Генерирую первую версию договора.",
     ];
   }
@@ -141,6 +142,8 @@ function getThinkingSteps(content) {
     "Выделяю существенные условия, без которых договор может работать плохо.",
     "Добавляю обычные условия: порядок оплаты, сроки, приемка, ответственность, изменение и расторжение.",
     "Учитываю типовые спорные места и формулирую условия понятным языком.",
+    "Добавляю вымышленные данные, чтобы договор сразу было удобно читать.",
+    "Позже заменю вымышленные данные на реальные данные сторон и условия сделки.",
     "Генерирую первую версию договора.",
   ];
 }
@@ -734,9 +737,10 @@ function App() {
   }
 
   async function typeAssistantMessage(content) {
+    const chunkSize = Math.max(TYPEWRITER_CHUNK_SIZE, Math.ceil(content.length / TYPEWRITER_MAX_STEPS));
     setMessages((items) => [...items, { role: "assistant", content: "" }]);
-    for (let index = 0; index < content.length; index += TYPEWRITER_CHUNK_SIZE) {
-      const visibleContent = content.slice(0, index + TYPEWRITER_CHUNK_SIZE);
+    for (let index = 0; index < content.length; index += chunkSize) {
+      const visibleContent = content.slice(0, index + chunkSize);
       setMessages((items) => {
         const nextItems = [...items];
         nextItems[nextItems.length - 1] = { role: "assistant", content: visibleContent };

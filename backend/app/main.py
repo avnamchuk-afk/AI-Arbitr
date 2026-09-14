@@ -352,8 +352,8 @@ def build_reasoning_note(content: str) -> str:
             "Выделяю существенные условия: жилое помещение, стороны, срок найма, размер и порядок оплаты.",
             "Добавляю обычные условия: порядок передачи квартиры, коммунальные платежи, ремонт, доступ в помещение, ответственность.",
             "Учитываю спорные места: депозит, просрочка оплаты, повреждение имущества, досрочное расторжение.",
-            "Беру игровые данные, чтобы договор было удобно читать: Наниматель Иванов Иван Иванович, срок 11 месяцев, плата 100 000 рублей.",
-            "Позже заменю игровые данные на реальные данные сторон и условия сделки.",
+            "Добавляю вымышленные данные, чтобы договор сразу было удобно читать.",
+            "Позже заменю вымышленные данные на реальные данные сторон и условия сделки.",
             "Генерирую первую версию договора.",
         ]
     else:
@@ -363,6 +363,8 @@ def build_reasoning_note(content: str) -> str:
             "Выделяю существенные условия, без которых договор может работать плохо.",
             "Добавляю обычные условия: порядок оплаты, сроки, приемка, ответственность, изменение и расторжение.",
             "Учитываю типовые спорные места и формулирую условия понятным языком.",
+            "Добавляю вымышленные данные, чтобы договор сразу было удобно читать.",
+            "Позже заменю вымышленные данные на реальные данные сторон и условия сделки.",
             "Генерирую первую версию договора.",
         ]
     return "Что я делаю:\n" + "\n".join(f"• {step}" for step in steps)
@@ -763,6 +765,45 @@ def build_placeholder_request(placeholders: list[str]) -> str:
         f"{lines}\n\n"
         "Я проверю, что все обязательные поля заполнены, и внесу данные в договор."
     )
+
+
+def build_demo_replacement_request() -> str:
+    return (
+        "Хорошо, перед согласованием заменим вымышленные данные на реальные.\n\n"
+        "Пришлите данные в таком формате:\n"
+        "- роль: наниматель / наймодатель / заказчик / исполнитель\n"
+        "- ФИО: \n"
+        "- паспорт: \n"
+        "- email: \n\n"
+        "Я проверю формат и изменю вымышленные данные в договоре."
+    )
+
+
+def fill_demo_contract_data(contract_text: str, values: dict[str, str]) -> str:
+    role = values.get("роль", "").lower()
+    full_name = values.get("фио") or values.get("ф.и.о.") or values.get("имя")
+    passport = values.get("паспорт") or values.get("паспортные данные")
+    email = values.get("email") or values.get("почта") or values.get("адрес электронной почты")
+    updated = contract_text
+
+    is_party_two = any(marker in role for marker in ("наним", "заказ", "сторона 2", "покуп", "клиент"))
+    if full_name:
+        if is_party_two:
+            updated = updated.replace("Иванов Иван Иванович", full_name)
+        else:
+            updated = updated.replace("Петров Петр Петрович", full_name)
+    if passport:
+        if is_party_two:
+            updated = updated.replace("1111 111111", passport)
+        else:
+            updated = updated.replace("2222 222222", passport)
+            updated = updated.replace("1111 111111", passport, 1)
+    if email:
+        if is_party_two:
+            updated = updated.replace("ivanov@example.com", email).replace("party2@example.test", email)
+        else:
+            updated = updated.replace("petrov@example.com", email).replace("party1@example.test", email)
+    return updated
 
 
 def is_rent_increase_question(text: str) -> bool:
@@ -1839,6 +1880,12 @@ async def send_message(
             db.commit()
             return {"content": answer, "contract_saved": False, "reasoning": ""}
 
+        if not placeholders and is_affirmative_message(payload.content) and "переходим к согласованию" in last_assistant:
+            answer = build_demo_replacement_request()
+            db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+            db.commit()
+            return {"content": answer, "contract_saved": False, "reasoning": ""}
+
         if placeholders and "перед согласованием нужно заполнить данные" in last_assistant:
             values = parse_placeholder_values(payload.content)
             missing = [placeholder for placeholder in placeholders if placeholder.lower() not in values]
@@ -1858,6 +1905,37 @@ async def send_message(
                 "Данные внесены в договор успешно.\n\n"
                 "Переходим к отправке ссылки второй стороне для согласования?"
             )
+            db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+            db.commit()
+            return {"content": answer, "contract_saved": True, "reasoning": ""}
+
+        if "заменим вымышленные данные" in last_assistant:
+            values = parse_placeholder_values(payload.content)
+            missing = [field for field in ("роль", "фио", "паспорт", "email") if field not in values]
+            if missing:
+                answer = (
+                    "Пока не хватает данных для замены вымышленных сведений:\n"
+                    + "\n".join(f"- {field}" for field in missing)
+                    + "\n\nПришлите недостающие значения в формате: поле: значение."
+                )
+                db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+                db.commit()
+                return {"content": answer, "contract_saved": False, "reasoning": ""}
+
+            filled_contract = fill_demo_contract_data(latest_version_before_answer.content, values)
+            save_contract_version(db, session, filled_contract)
+            reasoning = (
+                "Что я делаю:\n"
+                "• Проверяю реальные данные стороны.\n"
+                "• Изменяю вымышленные данные в тексте договора.\n"
+                "• Сохраняю новую версию перед согласованием."
+            )
+            answer = (
+                "Изменяю вымышленные данные на реальные.\n\n"
+                "Данные внесены в договор успешно.\n\n"
+                "Переходим к отправке ссылки второй стороне для согласования?"
+            )
+            db.add(Message(session_id=session.id, role=MessageRole.system, content=reasoning))
             db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
             db.commit()
             return {"content": answer, "contract_saved": True, "reasoning": ""}
