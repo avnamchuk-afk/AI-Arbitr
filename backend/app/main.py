@@ -17,10 +17,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_cors_origins, settings
 from app.db.base import Base
-from app.db.session import engine, get_db
+from app.db.session import SessionLocal, engine, get_db
 from app.models.entities import (
     ApprovalStatus,
     AuthToken,
+    AnalyticsEvent,
+    ContractAnalyticsSnapshot,
     ContractParticipant,
     ContractSession,
     ContractVersion,
@@ -767,6 +769,151 @@ def build_key_terms(contract_text: str) -> list[dict[str, str]]:
     ]
 
 
+def infer_contract_category(title: str = "", contract_text: str = "") -> str:
+    normalized = f"{title}\n{contract_text}".lower().replace("ё", "е")
+    if any(marker in normalized for marker in ("найм", "жил", "квартир", "аренд")):
+        return "housing_rent"
+    if any(marker in normalized for marker in ("saas", "саас", "сайт", "лендинг", "разработ")):
+        return "digital_development"
+    if any(marker in normalized for marker in ("клининг", "уборк")):
+        return "cleaning"
+    if any(marker in normalized for marker in ("подряд", "строител", "ремонт")):
+        return "construction"
+    if any(marker in normalized for marker in ("юрид", "консультац")):
+        return "legal_services"
+    if any(marker in normalized for marker in ("поставк", "купл", "продаж")):
+        return "goods"
+    if any(marker in normalized for marker in ("заем", "займ")):
+        return "loan"
+    if "договор" in normalized:
+        return "other_contract"
+    return "unknown"
+
+
+def extract_amount(value: str) -> float | None:
+    match = re.search(r"(\d[\d\s]*(?:[.,]\d+)?)", value or "")
+    if not match:
+        return None
+    normalized = match.group(1).replace(" ", "").replace(",", ".")
+    try:
+        return float(normalized)
+    except ValueError:
+        return None
+
+
+def extract_term_months(value: str) -> int | None:
+    normalized = (value or "").lower().replace("ё", "е")
+    month_match = re.search(r"(\d+)\s*(?:месяц|мес)", normalized)
+    if month_match:
+        return int(month_match.group(1))
+    year_match = re.search(r"(\d+)\s*(?:год|лет)", normalized)
+    if year_match:
+        return int(year_match.group(1)) * 12
+    if "11 месяцев" in normalized:
+        return 11
+    return None
+
+
+def key_term_value(key_terms: list[dict[str, str]], label: str) -> str:
+    for term in key_terms:
+        if term.get("label") == label:
+            return term.get("value") or ""
+    return ""
+
+
+def record_analytics_event(
+    db: Session,
+    event_type: str,
+    session: ContractSession | None = None,
+    user: User | None = None,
+    properties: dict | None = None,
+    source: str = "app",
+) -> None:
+    latest_version = get_latest_version(db, session) if session else None
+    db.add(
+        AnalyticsEvent(
+            session_id=session.id if session else None,
+            user_id=user.id if user else None,
+            event_type=event_type,
+            contract_category=infer_contract_category(session.title, latest_version.content if latest_version else "")
+            if session
+            else "unknown",
+            session_status=session.status.value if session else "unknown",
+            is_guest=is_guest_user(user) if user else False,
+            source=source,
+            properties=properties or {},
+        )
+    )
+
+
+def upsert_contract_analytics_snapshot(db: Session, session: ContractSession) -> None:
+    latest_version = get_latest_version(db, session)
+    contract_text = latest_version.content if latest_version else ""
+    key_terms = build_key_terms(contract_text) if contract_text else []
+    participants = list(session.participants)
+    messages = (
+        db.query(Message)
+        .filter(Message.session_id == session.id)
+        .all()
+    )
+    version_count = db.query(ContractVersion).filter(ContractVersion.session_id == session.id).count()
+    system_messages = [message.content for message in messages if message.role == MessageRole.system]
+    payment_value = key_term_value(key_terms, "Оплата в месяц")
+    deposit_value = key_term_value(key_terms, "Депозит")
+    term_value = key_term_value(key_terms, "Срок")
+    prolongation_value = key_term_value(key_terms, "Автопролонгация").lower()
+    utilities_value = key_term_value(key_terms, "ЖКУ").lower()
+    children_value = key_term_value(key_terms, "Дети").lower()
+    pets_value = key_term_value(key_terms, "Животные").lower()
+    snapshot = db.get(ContractAnalyticsSnapshot, session.id)
+    if snapshot is None:
+        snapshot = ContractAnalyticsSnapshot(session_id=session.id)
+        db.add(snapshot)
+    snapshot.owner_user_id = session.owner_user_id
+    snapshot.contract_category = infer_contract_category(session.title, contract_text)
+    snapshot.contract_kind = compact_key_term(session.title or "unknown", 120)
+    snapshot.status = session.status.value
+    snapshot.version_count = version_count
+    snapshot.message_count = len(messages)
+    snapshot.user_message_count = sum(1 for message in messages if message.role == MessageRole.user)
+    snapshot.assistant_message_count = sum(1 for message in messages if message.role == MessageRole.assistant)
+    snapshot.sent_to_review = any(content.startswith("VERSION_SENT|") for content in system_messages)
+    snapshot.signed_by_party_2 = any(
+        participant.role == ParticipantRole.party_2 and participant.approval_status == ApprovalStatus.approved
+        for participant in participants
+    )
+    snapshot.signed_by_party_1 = any(
+        participant.role == ParticipantRole.party_1 and participant.approval_status == ApprovalStatus.approved
+        for participant in participants
+    )
+    snapshot.finalized = session.status == SessionStatus.finalized
+    completed_event_exists = any("Договор отмечен как исполненный" in content for content in system_messages)
+    snapshot.completed_without_dispute = completed_event_exists and not any(
+        content.startswith("DISPUTE_OPENED|") for content in system_messages
+    )
+    snapshot.dispute_opened = any(content.startswith("DISPUTE_OPENED|") for content in system_messages)
+    snapshot.monthly_payment_amount = extract_amount(payment_value)
+    snapshot.deposit_amount = extract_amount(deposit_value)
+    snapshot.term_months = extract_term_months(term_value)
+    snapshot.auto_prolongation = True if prolongation_value == "есть" else False if prolongation_value == "нет" else None
+    snapshot.utilities_separate = "счетчик" in utilities_value
+    snapshot.children_allowed = "можно" in children_value
+    snapshot.pets_allowed = False if "нельзя" in pets_value else True if "можно" in pets_value else None
+    snapshot.updated_at = now_utc()
+
+
+@app.on_event("startup")
+def backfill_contract_analytics_snapshots() -> None:
+    db = SessionLocal()
+    try:
+        sessions = db.query(ContractSession).all()
+        for session in sessions:
+            upsert_contract_analytics_snapshot(db, session)
+        db.commit()
+    finally:
+        db.close()
+
+
 def build_placeholder_request(placeholders: list[str]) -> str:
     lines = "\n".join(f"- {placeholder}: " for placeholder in placeholders)
     return (
@@ -1498,6 +1645,8 @@ def create_session(user: User = Depends(get_current_user), db: Session = Depends
     db.flush()
     db.add(ContractParticipant(session_id=session.id, user_id=user.id, role=ParticipantRole.party_1))
     db.add(ContractParticipant(session_id=session.id, role=ParticipantRole.party_2))
+    record_analytics_event(db, "session_created", session=session, user=user)
+    upsert_contract_analytics_snapshot(db, session)
     db.commit()
     db.refresh(session)
     return session
@@ -1667,6 +1816,8 @@ def finalize_signed_session(db: Session, session: ContractSession, final_version
         participant.approval_status = ApprovalStatus.approved
         participant.approved_version_id = final_version.id
     db.add(Message(session_id=session.id, role=MessageRole.system, content="CONTRACT_FINALIZED"))
+    record_analytics_event(db, "contract_finalized", session=session, user=owner, properties={"version_number": final_version.version_number})
+    upsert_contract_analytics_snapshot(db, session)
 
 
 def build_contract_calendar_link(session: ContractSession, final_version: ContractVersion) -> str:
@@ -1779,6 +1930,15 @@ def save_contract_version(db: Session, session: ContractSession, content: str) -
         participant.approved_version_id = None
     db.add(version)
     db.add(Message(session_id=session.id, role=MessageRole.system, content=f"VERSION_CREATED|{version_number}"))
+    db.flush()
+    record_analytics_event(
+        db,
+        "contract_version_created",
+        session=session,
+        user=db.get(User, session.owner_user_id),
+        properties={"version_number": version_number},
+    )
+    upsert_contract_analytics_snapshot(db, session)
     return version
 
 
@@ -1840,6 +2000,14 @@ def create_invite(
                 content=f"VERSION_SENT|{version_number}|{payload.email}",
             )
         )
+        record_analytics_event(
+            db,
+            "invite_sent",
+            session=session,
+            user=user,
+            properties={"version_number": version_number, "delivery": "email"},
+        )
+        upsert_contract_analytics_snapshot(db, session)
         db.commit()
     return {"invite_link": invite_link, "sent": sent, "sent_to": str(payload.email) if payload and payload.email else None, "copy_to": user.email if sent else None}
 
@@ -1948,6 +2116,14 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
     for email in {str(payload.email), owner.email if owner and not is_guest_user(owner) else ""}:
         if email:
             send_contract_signed_notice(email, session.title, pdf_bytes)
+    record_analytics_event(
+        db,
+        "party_2_approved",
+        session=session,
+        user=user,
+        properties={"version_number": latest_version.version_number, "role": "party_2"},
+    )
+    upsert_contract_analytics_snapshot(db, session)
     db.commit()
     return {"finalized": False, "party_two_signed": True}
 
@@ -2053,6 +2229,14 @@ async def send_message(
                 content=f"VERSION_SENT|{latest_version.version_number}|{party_email}",
             )
         )
+        record_analytics_event(
+            db,
+            "invite_sent",
+            session=session,
+            user=user,
+            properties={"version_number": latest_version.version_number, "delivery": "email"},
+        )
+        upsert_contract_analytics_snapshot(db, session)
         answer = (
             f"Версия № {latest_version.version_number} направлена на согласование на адрес {party_email}. "
             f"Копия письма отправлена на {user.email}."
@@ -2395,6 +2579,10 @@ async def send_message(
     db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
     if should_save_contract_version:
         save_contract_version(db, session, contract_text)
+    if is_dispute and session.status == SessionStatus.finalized:
+        db.add(Message(session_id=session.id, role=MessageRole.system, content=f"DISPUTE_OPENED|{user.id}"))
+        record_analytics_event(db, "dispute_opened", session=session, user=user)
+    upsert_contract_analytics_snapshot(db, session)
     db.commit()
     return {"content": answer, "contract_saved": should_save_contract_version, "reasoning": reasoning_note}
 
@@ -2433,6 +2621,13 @@ def approve_version(session_id: str, user: User = Depends(get_current_user), db:
             content=f"VERSION_APPROVED|{latest_version.version_number}|{user.email}",
         )
     )
+    record_analytics_event(
+        db,
+        "party_approved",
+        session=session,
+        user=user,
+        properties={"version_number": latest_version.version_number, "role": participant.role.value},
+    )
 
     participants = session.participants
     both_approved = all(
@@ -2443,6 +2638,8 @@ def approve_version(session_id: str, user: User = Depends(get_current_user), db:
     )
     if both_approved:
         finalize_signed_session(db, session, latest_version)
+    else:
+        upsert_contract_analytics_snapshot(db, session)
 
     db.commit()
     if both_approved:
@@ -2473,6 +2670,8 @@ def complete_contract(session_id: str, user: User = Depends(get_current_user), d
             content="Договор отмечен как исполненный. Чат сохранен в истории и защищен от удаления.",
         )
     )
+    record_analytics_event(db, "contract_completed", session=session, user=user)
+    upsert_contract_analytics_snapshot(db, session)
     db.commit()
     return {"message": "Договор отмечен как исполненный"}
 

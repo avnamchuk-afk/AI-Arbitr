@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -66,6 +66,21 @@ class RateLimitEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
 
 
+class AnalyticsEvent(Base):
+    __tablename__ = "analytics_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=True, index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    contract_category: Mapped[str] = mapped_column(String(80), default="unknown", index=True)
+    session_status: Mapped[str] = mapped_column(String(40), default="unknown", index=True)
+    is_guest: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source: Mapped[str] = mapped_column(String(80), default="app", index=True)
+    properties: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+
+
 class ContractSession(Base):
     __tablename__ = "sessions"
 
@@ -84,6 +99,35 @@ class ContractSession(Base):
     participants: Mapped[list["ContractParticipant"]] = relationship(back_populates="session")
     versions: Mapped[list["ContractVersion"]] = relationship(back_populates="session")
     messages: Mapped[list["Message"]] = relationship(back_populates="session")
+
+
+class ContractAnalyticsSnapshot(Base):
+    __tablename__ = "contract_analytics_snapshots"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"), primary_key=True)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    contract_category: Mapped[str] = mapped_column(String(80), default="unknown", index=True)
+    contract_kind: Mapped[str] = mapped_column(String(120), default="unknown", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    version_count: Mapped[int] = mapped_column(Integer, default=0)
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    user_message_count: Mapped[int] = mapped_column(Integer, default=0)
+    assistant_message_count: Mapped[int] = mapped_column(Integer, default=0)
+    sent_to_review: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    signed_by_party_2: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    signed_by_party_1: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    finalized: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    completed_without_dispute: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    dispute_opened: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    monthly_payment_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    deposit_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    term_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    auto_prolongation: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    utilities_separate: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    children_allowed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    pets_allowed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, index=True)
 
 
 class ContractParticipant(Base):
