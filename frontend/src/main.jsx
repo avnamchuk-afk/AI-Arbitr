@@ -425,24 +425,21 @@ const PROJECT_TEAM = [
   },
 ];
 
-function ModelSelector({ onSoon }) {
+function ModelSelector({ selectedModel, onChange }) {
   return (
     <label className="model-selector" aria-label="Выбор нейросети">
       <span className="model-status" aria-hidden="true" />
       <span className="model-copy">
         <select
-          value="yandexgpt"
+          value={selectedModel}
           onChange={(event) => {
-            if (event.target.value !== "yandexgpt") {
-              onSoon?.("Переключение моделей появится позже");
-            }
-            event.target.value = "yandexgpt";
+            onChange?.(event.target.value);
           }}
         >
           <option value="yandexgpt">YandexGPT 5.1 Pro</option>
+          <option value="qwen">Qwen 2.5 7B Instruct</option>
           <option value="gigachat" disabled>GigaChat скоро</option>
           <option value="chatgpt" disabled>ChatGPT скоро</option>
-          <option value="qwen" disabled>Qwen скоро</option>
           <option value="claude" disabled>Claude скоро</option>
           <option value="deepseek" disabled>DeepSeek скоро</option>
         </select>
@@ -582,6 +579,7 @@ function App() {
   const [currentSession, setCurrentSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState(localStorage.getItem("ai-arbitr-draft") || "");
+  const [selectedModel, setSelectedModel] = useState(localStorage.getItem("ai-arbitr-model") || "yandexgpt");
   const [thinking, setThinking] = useState(false);
   const [thinkingStep, setThinkingStep] = useState("");
   const [thinkingProgress, setThinkingProgress] = useState(0);
@@ -664,6 +662,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem("ai-arbitr-draft", draft);
   }, [draft]);
+
+  useEffect(() => {
+    localStorage.setItem("ai-arbitr-model", selectedModel);
+  }, [selectedModel]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -936,7 +938,7 @@ function App() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, model: selectedModel }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -1345,7 +1347,13 @@ function App() {
         <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
           <Menu size={20} />
         </button>
-        <ModelSelector onSoon={setToast} />
+        <ModelSelector
+          selectedModel={selectedModel}
+          onChange={(model) => {
+            setSelectedModel(model);
+            setToast(model === "qwen" ? "Включен Qwen 2.5" : "Включен YandexGPT 5.1 Pro");
+          }}
+        />
         <button className="mobile-stat" onClick={openStats} aria-label="Статистика сервиса">
           <BarChart3 size={20} />
         </button>

@@ -93,6 +93,7 @@ class RegisterRequest(BaseModel):
 
 class MessageRequest(BaseModel):
     content: str
+    model: str | None = None
 
 
 class VersionRequest(BaseModel):
@@ -2398,9 +2399,7 @@ async def send_message(
                     },
                 ]
         if prompt is not None:
-            answer = await ask_yandex_gpt(
-                prompt
-            )
+            answer = await ask_yandex_gpt(prompt, model=payload.model)
         if latest_version_before_answer is None and not used_fixed_template:
             answer = normalize_contract_legal_title(answer, payload.content)
         if should_save_contract_version or looks_like_contract_text(answer):
