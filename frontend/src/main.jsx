@@ -1201,7 +1201,9 @@ function App() {
         ? getAdditionPlaceholder(currentSession, sessionDetail)
         : chatMode === "dispute"
           ? "Опишите, что произошло: кто, когда, какое условие нарушил"
-          : "Например: составь договор найма квартиры";
+          : messages.length === 0 && !hasContractVersion
+            ? "Например: составь договор найма квартиры"
+            : "Напишите сообщение";
   const composerHint = hasContractVersion
     ? "Можно задать вопрос, добавить условие или написать email второй стороны для согласования"
     : "Напишите коротко, какой договор нужно составить";
