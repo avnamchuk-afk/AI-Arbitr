@@ -590,9 +590,6 @@ function App() {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [inviteSending, setInviteSending] = useState(false);
   const [authSubmitting, setAuthSubmitting] = useState(false);
-  const [extensionFormOpen, setExtensionFormOpen] = useState(false);
-  const [extensionSubmitting, setExtensionSubmitting] = useState(false);
-  const [extensionForm, setExtensionForm] = useState({ proposed_deadline: "", reason: "", compensation: "" });
   const messagesEndRef = useRef(null);
   const gestureRef = useRef({ x: 0, y: 0 });
 
@@ -1168,44 +1165,6 @@ function App() {
     const data = await response.json().catch(() => ({}));
     setAppNotice(response.ok ? data.message : data.detail || "Не удалось отметить исполнение.");
     loadSession(currentSession.id);
-  }
-
-  async function submitDeadlineExtension(event) {
-    event.preventDefault();
-    if (!currentSession || extensionSubmitting) return;
-    setExtensionSubmitting(true);
-    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/deadline-extensions`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(extensionForm),
-    });
-    const data = await response.json().catch(() => ({}));
-    setExtensionSubmitting(false);
-    if (!response.ok) {
-      setAppNotice(data.detail || "Не удалось направить предложение.");
-      return;
-    }
-    setExtensionFormOpen(false);
-    setExtensionForm({ proposed_deadline: "", reason: "", compensation: "" });
-    await loadSession(currentSession.id);
-    setAppNotice("Предложение о новом сроке направлено второй стороне и продублировано на email.");
-  }
-
-  async function respondDeadlineExtension(proposalId, action) {
-    if (!currentSession) return;
-    const response = await fetch(
-      `${API_URL}/sessions/${currentSession.id}/deadline-extensions/${proposalId}/respond`,
-      {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      }
-    );
-    const data = await response.json().catch(() => ({}));
-    await loadSession(currentSession.id);
-    setAppNotice(response.ok ? data.message : data.detail || "Не удалось зафиксировать ответ.");
   }
 
   const hasContractVersion = Boolean(sessionDetail?.latest_version);
@@ -1974,9 +1933,6 @@ function App() {
                       <p>Подписан сторонами путем согласования: {formatFinalizedDate(sessionDetail?.session || currentSession)}. Финальный PDF направлен сторонам на email.</p>
                     </div>
                     <div className="signed-actions">
-                      <button className="download-button" onClick={() => setExtensionFormOpen((open) => !open)}>
-                        <FileText size={16} /> Предложить допсоглашение
-                      </button>
                       <button className="dispute-button" onClick={startDispute}>
                         Открыть спор
                       </button>
@@ -1987,61 +1943,6 @@ function App() {
                         Договор исполнен
                       </button>
                     </div>
-                    {extensionFormOpen && (
-                      <form className="extension-form" onSubmit={submitDeadlineExtension}>
-                        <strong>Предложить новый срок</strong>
-                        <p>
-                          Само предложение не изменяет договор. Новый срок начнет действовать только после согласия второй стороны.
-                        </p>
-                        <label>
-                          Новый срок
-                          <input
-                            type="date"
-                            required
-                            value={extensionForm.proposed_deadline}
-                            onChange={(event) => setExtensionForm((form) => ({ ...form, proposed_deadline: event.target.value }))}
-                          />
-                        </label>
-                        <label>
-                          Причина переноса
-                          <textarea
-                            required
-                            value={extensionForm.reason}
-                            onChange={(event) => setExtensionForm((form) => ({ ...form, reason: event.target.value }))}
-                            placeholder="Например: для завершения интеграции требуется еще 5 рабочих дней"
-                          />
-                        </label>
-                        <label>
-                          Компенсация заказчику, если предлагается
-                          <input
-                            value={extensionForm.compensation}
-                            onChange={(event) => setExtensionForm((form) => ({ ...form, compensation: event.target.value }))}
-                            placeholder="Например: скидка 5% или дополнительная работа"
-                          />
-                        </label>
-                        <button type="submit" disabled={extensionSubmitting}>
-                          {extensionSubmitting ? "Направляю..." : "Направить второй стороне"}
-                        </button>
-                      </form>
-                    )}
-                    {(sessionDetail?.deadline_extensions || []).map((proposal) => (
-                      <article className={`extension-card ${proposal.status}`} key={proposal.id}>
-                        <span>
-                          {proposal.status === "pending" ? "Ожидает ответа" : proposal.status === "accepted" ? "Принято" : "Отклонено"}
-                        </span>
-                        <strong>Новый срок: {new Date(`${proposal.proposed_deadline}T00:00:00`).toLocaleDateString("ru-RU")}</strong>
-                        <p>{proposal.reason}</p>
-                        {proposal.compensation && <p><b>Компенсация:</b> {proposal.compensation}</p>}
-                        {proposal.status === "accepted" && <p>{proposal.legal_effect}</p>}
-                        {proposal.status === "pending" && !proposal.proposer_is_me && (
-                          <div className="extension-actions">
-                            <button onClick={() => respondDeadlineExtension(proposal.id, "accept")}>Согласиться</button>
-                            <button onClick={() => respondDeadlineExtension(proposal.id, "reject")}>Отклонить</button>
-                          </div>
-                        )}
-                        {proposal.status === "pending" && proposal.proposer_is_me && <small>Предложение направлено второй стороне.</small>}
-                      </article>
-                    ))}
                     {chatMode === "dispute" && (
                       <p className="panel-hint">
                         Опишите ситуацию. Я проверю условия договора, историю согласования и подготовлю позицию по спору.
