@@ -4,7 +4,7 @@ import ipaddress
 import json
 from types import SimpleNamespace
 from io import BytesIO
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timezone
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
@@ -23,6 +23,7 @@ from app.models.entities import (
     AuthToken,
     AnalyticsEvent,
     ContractAnalyticsSnapshot,
+    DeadlineExtensionProposal,
     ContractParticipant,
     ContractSession,
     ContractVersion,
@@ -44,7 +45,7 @@ from app.services.auth import (
     token_expires_at,
 )
 from app.services.contract_templates import AI_ARBITR_DISPUTE_SECTION, build_housing_rent_contract, build_website_development_contract
-from app.services.email import send_contract_invite, send_contract_signed_notice, send_magic_link, smtp_is_configured
+from app.services.email import send_contract_invite, send_contract_signed_notice, send_deadline_extension_notice, send_magic_link, smtp_is_configured
 from app.services.pdf import build_contract_pdf, build_interaction_certificate_pdf
 from app.services.privacy import contains_passport_like_data
 from app.services.prompts import CONTRACT_SYSTEM_PROMPT, SIMPLE_CONTRACT_SYSTEM_PROMPT, build_dispute_prompt
@@ -117,6 +118,16 @@ class ReviewApproveRequest(BaseModel):
     inn: str = ""
     email: EmailStr
     personal_data_accepted: bool
+
+
+class DeadlineExtensionRequest(BaseModel):
+    proposed_deadline: date
+    reason: str
+    compensation: str = ""
+
+
+class DeadlineExtensionResponse(BaseModel):
+    action: str
 
 
 GUEST_EMAIL_SUFFIX = "@guest.ai-arbitr.local"
@@ -1677,6 +1688,12 @@ def get_session(session_id: str, user: User = Depends(get_current_user), db: Ses
         .order_by(Message.created_at.asc())
         .all()
     )
+    deadline_extensions = (
+        db.query(DeadlineExtensionProposal)
+        .filter(DeadlineExtensionProposal.session_id == session.id)
+        .order_by(DeadlineExtensionProposal.created_at.desc())
+        .all()
+    )
     return {
         "session": session,
         "participants": session.participants,
@@ -1684,7 +1701,126 @@ def get_session(session_id: str, user: User = Depends(get_current_user), db: Ses
         "latest_version": latest_version,
         "key_terms": build_key_terms(latest_version.content) if latest_version else [],
         "messages": messages,
+        "deadline_extensions": [
+            {
+                "id": item.id,
+                "proposed_deadline": item.proposed_deadline,
+                "reason": item.reason,
+                "compensation": item.compensation,
+                "status": item.status,
+                "created_at": item.created_at,
+                "responded_at": item.responded_at,
+                "proposer_is_me": item.proposer_user_id == user.id,
+                "legal_effect": (
+                    "При соблюдении нового срока стороны не начисляют неустойку за перенос; "
+                    "при нарушении нового срока ответственность исчисляется со следующего дня."
+                ),
+            }
+            for item in deadline_extensions
+        ],
     }
+
+
+@app.post("/sessions/{session_id}/deadline-extensions")
+def create_deadline_extension(
+    session_id: str,
+    payload: DeadlineExtensionRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = get_accessible_session(db, session_id, user)
+    get_user_participant(db, session, user)
+    if session.status != SessionStatus.finalized:
+        raise HTTPException(status_code=400, detail="Допсоглашение доступно после подписания договора")
+    if payload.proposed_deadline <= now_utc().date():
+        raise HTTPException(status_code=400, detail="Новый срок должен быть позднее сегодняшней даты")
+    reason = payload.reason.strip()
+    if len(reason) < 5:
+        raise HTTPException(status_code=400, detail="Кратко укажите причину переноса срока")
+    pending = (
+        db.query(DeadlineExtensionProposal)
+        .filter(
+            DeadlineExtensionProposal.session_id == session.id,
+            DeadlineExtensionProposal.status == "pending",
+        )
+        .first()
+    )
+    if pending:
+        raise HTTPException(status_code=409, detail="По договору уже ожидает ответа другое предложение")
+
+    proposal = DeadlineExtensionProposal(
+        session_id=session.id,
+        proposer_user_id=user.id,
+        proposed_deadline=payload.proposed_deadline,
+        reason=reason,
+        compensation=payload.compensation.strip(),
+    )
+    db.add(proposal)
+    db.add(
+        Message(
+            session_id=session.id,
+            role=MessageRole.system,
+            content=f"Предложено дополнительное соглашение: новый срок {payload.proposed_deadline.isoformat()}.",
+        )
+    )
+    session.updated_at = now_utc()
+    db.commit()
+    db.refresh(proposal)
+
+    recipients = {
+        participant.user.email
+        for participant in session.participants
+        if participant.user and participant.user_id != user.id and not is_guest_user(participant.user)
+    }
+    body = f"Предложен новый срок: {payload.proposed_deadline.strftime('%d.%m.%Y')}. Причина: {reason}"
+    for recipient in recipients:
+        send_deadline_extension_notice(recipient, session.title, body, settings.app_base_url)
+    return {"id": proposal.id, "status": proposal.status, "message": "Предложение направлено второй стороне"}
+
+
+@app.post("/sessions/{session_id}/deadline-extensions/{proposal_id}/respond")
+def respond_deadline_extension(
+    session_id: str,
+    proposal_id: str,
+    payload: DeadlineExtensionResponse,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = get_accessible_session(db, session_id, user)
+    get_user_participant(db, session, user)
+    proposal = db.get(DeadlineExtensionProposal, proposal_id)
+    if proposal is None or proposal.session_id != session.id:
+        raise HTTPException(status_code=404, detail="Предложение не найдено")
+    if proposal.proposer_user_id == user.id:
+        raise HTTPException(status_code=400, detail="На предложение должна ответить другая сторона")
+    if proposal.status != "pending":
+        raise HTTPException(status_code=409, detail="Ответ на это предложение уже зафиксирован")
+    if payload.action not in {"accept", "reject"}:
+        raise HTTPException(status_code=400, detail="Допустимые действия: accept или reject")
+
+    proposal.status = "accepted" if payload.action == "accept" else "rejected"
+    proposal.responder_user_id = user.id
+    proposal.responded_at = now_utc()
+    session.updated_at = now_utc()
+    if proposal.status == "accepted":
+        event_text = (
+            f"Дополнительное соглашение принято. Новый срок: {proposal.proposed_deadline.strftime('%d.%m.%Y')}. "
+            "При соблюдении нового срока неустойка за перенос не начисляется; при нарушении нового срока "
+            "ответственность исчисляется со следующего дня."
+        )
+    else:
+        event_text = "Предложение о переносе срока отклонено. Продолжают действовать первоначальные условия договора."
+    db.add(Message(session_id=session.id, role=MessageRole.system, content=event_text))
+    db.commit()
+
+    recipients = {
+        participant.user.email
+        for participant in session.participants
+        if participant.user and not is_guest_user(participant.user)
+    }
+    for recipient in recipients:
+        send_deadline_extension_notice(recipient, session.title, event_text, settings.app_base_url)
+    return {"status": proposal.status, "message": event_text}
 
 
 @app.delete("/sessions/{session_id}")

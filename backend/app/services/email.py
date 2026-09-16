@@ -118,3 +118,28 @@ def send_contract_signed_notice(
             smtp.starttls()
             smtp.login(settings.smtp_user, settings.smtp_password)
             smtp.send_message(message)
+
+
+def send_deadline_extension_notice(email: str, title: str, body: str, app_link: str) -> None:
+    if not smtp_is_configured():
+        return
+
+    message = EmailMessage()
+    message["Subject"] = "Дополнительное соглашение в AI-Арбитр"
+    message["From"] = settings.smtp_from
+    message["To"] = email
+    message.set_content(
+        "Здравствуйте!\n\n"
+        f"По договору «{title}» зафиксировано действие:\n{body}\n\n"
+        f"Открыть договор:\n{app_link}\n"
+    )
+
+    if settings.smtp_port == 465:
+        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as smtp:
+            smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(message)
+    else:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
+            smtp.starttls()
+            smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(message)

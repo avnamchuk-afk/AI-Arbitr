@@ -292,6 +292,17 @@ export default function LandingPage() {
         </div>
       </Section>
 
+      <Section eyebrow="Исполнение" title="Не успеваете в срок? Договоритесь до конфликта">
+        <div className="landing-problems">
+          <article><strong>Предложите новый срок</strong><p>Сторона заранее объясняет причину задержки и предлагает дополнительное соглашение.</p></article>
+          <article><strong>Согласуйте условия</strong><p>Вторая сторона принимает перенос или отклоняет его. До согласия первоначальный срок продолжает действовать.</p></article>
+          <article><strong>Зафиксируйте результат</strong><p>После согласия новый срок и условия ответственности сохраняются в истории договора.</p></article>
+        </div>
+        <div className="landing-note">
+          Предложение переноса подтверждает стремление действовать добросовестно, но освобождает от неустойки только после согласия второй стороны.
+        </div>
+      </Section>
+
       <Section eyebrow="Доверие" title="Почему можно доверять?" className="landing-trust" >
         <div id="trust" className="landing-checks">
           {trustItems.map((item) => <p key={item}><ShieldCheck size={17} />{item}</p>)}
