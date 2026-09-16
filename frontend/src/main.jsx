@@ -587,6 +587,7 @@ function App() {
   });
   const [reviewNotice, setReviewNotice] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [inviteSending, setInviteSending] = useState(false);
   const messagesEndRef = useRef(null);
   const gestureRef = useRef({ x: 0, y: 0 });
 
@@ -825,6 +826,7 @@ function App() {
     setSessions([session, ...sessions]);
     setMessages([]);
     setSidebarOpen(false);
+    setToast("Новый договор создан");
   }
 
   async function confirmDeleteSession(event, session) {
@@ -846,6 +848,7 @@ function App() {
 
     setSessions((items) => items.map((item) => (item.id === session.id ? { ...item, is_deleted: true } : item)));
     setDeleteCandidateId("");
+    setToast("Договор перемещен в удаленные");
     loadSessions();
     if (currentSession?.id === session.id) {
       setCurrentSession(null);
@@ -933,6 +936,14 @@ function App() {
         setQuestionResolved(true);
       }
       setChatMode("idle");
+      if (data.next_action === "sent") {
+        if (data.invite_link) setInviteLink(data.invite_link);
+        setAppNotice(
+          data.sent_to
+            ? `Ссылка отправлена на ${data.sent_to}. Копия письма отправлена на ${data.copy_to || "ваш email"}.`
+            : "Ссылка отправлена второй стороне."
+        );
+      }
       loadSession(currentSession.id);
       loadSessions();
     } catch (error) {
@@ -968,20 +979,32 @@ function App() {
   }
 
   async function sendInviteRequest() {
-    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/invite`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: partyEmail || null }),
-    });
-    if (!response.ok) return;
-    const data = await response.json();
-    setInviteLink(data.invite_link);
-    setAppNotice(
-      data.sent
-        ? "Ссылка на просмотр договора отправлена второй стороне на email."
-        : "SMTP пока не настроен. Скопируйте ссылку просмотра и отправьте второй стороне вручную."
-    );
+    if (!currentSession || inviteSending) return;
+    setInviteSending(true);
+    setAppNotice(partyEmail ? `Отправляю ссылку на ${partyEmail}...` : "Готовлю ссылку согласования...");
+    try {
+      const response = await fetch(`${API_URL}/sessions/${currentSession.id}/invite`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: partyEmail || null }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setAppNotice(data.detail || "Не удалось отправить ссылку согласования.");
+        return;
+      }
+      setInviteLink(data.invite_link);
+      setAppNotice(
+        data.sent
+          ? `Ссылка отправлена на ${data.sent_to || partyEmail}. Копия письма отправлена на ${data.copy_to || "ваш email"}.`
+          : "SMTP пока не настроен. Скопируйте ссылку просмотра и отправьте второй стороне вручную."
+      );
+      loadSession(currentSession.id);
+      loadSessions();
+    } finally {
+      setInviteSending(false);
+    }
   }
 
   async function createInvite() {
@@ -1004,6 +1027,7 @@ function App() {
     setChatMode("question");
     setDraft("");
     setQuestionResolved(false);
+    setToast("Режим вопроса включен");
   }
 
   function startAddition() {
@@ -1011,10 +1035,11 @@ function App() {
     setChatMode("add");
     setDraft("");
     setQuestionResolved(false);
+    setToast("Режим добавления условия включен");
   }
 
   function startAgreement() {
-    setAppNotice("");
+    setAppNotice("Проверьте карточку условий и введите email второй стороны.");
     setChatMode("agree");
     setQuestionResolved(false);
   }
@@ -1024,6 +1049,7 @@ function App() {
     setChatMode("dispute");
     setDraft("");
     setQuestionResolved(false);
+    setToast("Режим спора включен");
   }
 
   function showCurrentContract(term) {
@@ -1097,6 +1123,7 @@ function App() {
 
   function downloadCertificate() {
     if (!currentSession) return;
+    setToast("Открываю справку");
     window.open(`${API_URL}/sessions/${currentSession.id}/certificate.pdf`, "_blank", "noopener,noreferrer");
   }
 
@@ -1808,10 +1835,18 @@ function App() {
                             onChange={(event) => setPartyEmail(event.target.value)}
                             placeholder="email второй стороны"
                           />
-                          <button onClick={createInvite}>Отправить ссылку согласования</button>
+                          <button onClick={createInvite} disabled={inviteSending}>
+                            {inviteSending ? "Отправляю..." : "Отправить ссылку согласования"}
+                          </button>
                         </div>
                         {inviteLink && (
-                          <button className="copy-link" onClick={() => navigator.clipboard?.writeText(inviteLink)}>
+                          <button
+                            className="copy-link"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(inviteLink);
+                              setToast("Ссылка скопирована");
+                            }}
+                          >
                             <Copy size={16} /> {inviteLink}
                           </button>
                         )}

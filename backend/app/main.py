@@ -1831,7 +1831,7 @@ def create_invite(
             .one()
         )
         party_2.user_id = invited_user.id
-        send_contract_invite(payload.email, invite_link, session.title, pdf_link)
+        send_contract_invite(payload.email, invite_link, session.title, pdf_link, copy_to=user.email)
         sent = smtp_is_configured()
         db.add(
             Message(
@@ -1841,7 +1841,7 @@ def create_invite(
             )
         )
         db.commit()
-    return {"invite_link": invite_link, "sent": sent}
+    return {"invite_link": invite_link, "sent": sent, "sent_to": str(payload.email) if payload and payload.email else None, "copy_to": user.email if sent else None}
 
 
 def get_session_by_review_token(db: Session, invite_token: str) -> ContractSession:
@@ -2045,7 +2045,7 @@ async def send_message(
         party_2.user_id = invited_user.id
         invite_link = f"{settings.app_base_url}/review/{session.invite_token}"
         pdf_link = f"{settings.api_base_url}/review/{session.invite_token}.pdf"
-        send_contract_invite(party_email, invite_link, session.title, pdf_link)
+        send_contract_invite(party_email, invite_link, session.title, pdf_link, copy_to=user.email)
         db.add(
             Message(
                 session_id=session.id,
@@ -2053,7 +2053,10 @@ async def send_message(
                 content=f"VERSION_SENT|{latest_version.version_number}|{party_email}",
             )
         )
-        answer = f"Версия № {latest_version.version_number} направлена на согласование на адрес {party_email}."
+        answer = (
+            f"Версия № {latest_version.version_number} направлена на согласование на адрес {party_email}. "
+            f"Копия письма отправлена на {user.email}."
+        )
         db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
         db.commit()
         return {
@@ -2062,6 +2065,8 @@ async def send_message(
             "reasoning": "",
             "next_action": "sent",
             "invite_link": invite_link,
+            "sent_to": party_email,
+            "copy_to": user.email,
         }
 
     if (

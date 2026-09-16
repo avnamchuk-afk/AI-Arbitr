@@ -34,7 +34,13 @@ def send_magic_link(email: str, link: str) -> None:
             smtp.send_message(message)
 
 
-def send_contract_invite(email: str, link: str, title: str, pdf_link: str | None = None) -> None:
+def send_contract_invite(
+    email: str,
+    link: str,
+    title: str,
+    pdf_link: str | None = None,
+    copy_to: str | None = None,
+) -> None:
     if not smtp_is_configured():
         return
 
@@ -42,6 +48,8 @@ def send_contract_invite(email: str, link: str, title: str, pdf_link: str | None
     message["Subject"] = "Согласование договора в AI-Арбитр"
     message["From"] = settings.smtp_from
     message["To"] = email
+    if copy_to and copy_to != email:
+        message["Cc"] = copy_to
     message.set_content(
         "Здравствуйте!\n\n"
         f"Вам направлен на согласование проект договора: {title}.\n\n"
