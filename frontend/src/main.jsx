@@ -36,6 +36,7 @@ const TYPEWRITER_MAX_STEPS = 90;
 const MIN_INITIAL_THINKING_MS = 3200;
 const MIN_REGULAR_THINKING_MS = 1500;
 const DEMO_REVIEW_PASSPORT = "1111 111111";
+const DEFAULT_AI_MODEL = "qwen";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -579,7 +580,7 @@ function App() {
   const [currentSession, setCurrentSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState(localStorage.getItem("ai-arbitr-draft") || "");
-  const [selectedModel, setSelectedModel] = useState(localStorage.getItem("ai-arbitr-model") || "yandexgpt");
+  const [selectedModel, setSelectedModel] = useState(localStorage.getItem("ai-arbitr-model") || DEFAULT_AI_MODEL);
   const [thinking, setThinking] = useState(false);
   const [thinkingStep, setThinkingStep] = useState("");
   const [thinkingProgress, setThinkingProgress] = useState(0);
