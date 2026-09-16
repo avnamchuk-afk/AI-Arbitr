@@ -92,7 +92,7 @@ function KnowledgeArticle({ article }) {
             </section>
           )}
           <div className="knowledge-disclaimer">
-            Материал носит информационный характер и описывает текущую MVP-версию сервиса. Он не заменяет индивидуальную юридическую консультацию.
+            Материал носит информационный характер и описывает текущую MVP-версию сервиса.
           </div>
           <a className="knowledge-primary" href="/">Попробовать в AI-Arbitr <ArrowRight size={18} /></a>
           <RelatedArticles slugs={article.related || []} />
