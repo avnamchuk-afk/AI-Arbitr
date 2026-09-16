@@ -27,6 +27,7 @@ import {
   ThumbsUp,
   Trash2,
 } from "lucide-react";
+import LandingPage from "./LandingPage.jsx";
 import "./styles.css";
 
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
@@ -594,9 +595,10 @@ function App() {
 
   const reviewToken = getReviewTokenFromPath();
   const isPrivacyPath = window.location.pathname === "/privacy";
+  const isLandingPath = window.location.pathname === "/landing";
 
   useEffect(() => {
-    if (reviewToken || isPrivacyPath) {
+    if (reviewToken || isPrivacyPath || isLandingPath) {
       setAuthReady(true);
       return;
     }
@@ -631,7 +633,7 @@ function App() {
       }
     }
     bootstrapAuth();
-  }, [reviewToken, isPrivacyPath]);
+  }, [reviewToken, isPrivacyPath, isLandingPath]);
 
   useEffect(() => {
     if (!reviewToken) return;
@@ -1203,6 +1205,10 @@ function App() {
   const composerHint = hasContractVersion
     ? "Можно задать вопрос, добавить условие или написать email второй стороны для согласования"
     : "Напишите коротко, какой договор нужно составить";
+
+  if (isLandingPath) {
+    return <LandingPage />;
+  }
 
   if (!authReady) {
     return (
