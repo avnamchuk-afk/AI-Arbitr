@@ -281,6 +281,7 @@ DEMO_EXPLANATION = """Обеспечительный платеж — это с�
 CONTRACT_UPDATE_PREFIX = "ДОПОЛНИТЬ ДОГОВОР:"
 PLACEHOLDER_RE = re.compile(r"\[([^\[\]]+)\]")
 MONEY_RE = re.compile(r"(\d[\d\s]*(?:[.,]\d+)?\s*(?:руб\.?|рублей))", re.IGNORECASE)
+KEY_TERM_MAX_LENGTH = 72
 
 KNOWN_SERVICE_MARKERS = (
     "юрид",
@@ -649,6 +650,18 @@ def split_contract_sentences(contract_text: str) -> list[str]:
     return [item.strip() for item in re.split(r"(?<=[.!?])\s+", normalized) if item.strip()]
 
 
+def compact_key_term(value: str, max_length: int = KEY_TERM_MAX_LENGTH, strip_leading_number: bool = True) -> str:
+    value = normalize_contract_line(value)
+    if strip_leading_number:
+        value = re.sub(r"^\d+(?:\.\d+)*\.?\s*", "", value)
+    value = re.sub(r"\s+", " ", value).strip(" ;,.")
+    if not value:
+        return "не указано"
+    if len(value) <= max_length:
+        return value
+    return value[: max_length - 1].rstrip(" ,.;:") + "…"
+
+
 def find_sentence(contract_text: str, keywords: tuple[str, ...]) -> str:
     for sentence in split_contract_sentences(contract_text):
         lowered = sentence.lower()
@@ -667,14 +680,20 @@ def first_placeholder_value(contract_text: str, names: tuple[str, ...]) -> str:
 
 
 def extract_money_or_placeholder(sentence: str, placeholder_names: tuple[str, ...] = ()) -> str:
+    if sentence == "не указано":
+        return "не указано"
     money_match = MONEY_RE.search(sentence)
     if money_match:
-        return money_match.group(1)
+        return compact_key_term(money_match.group(1), 32, strip_leading_number=False)
     amount_with_words_match = re.search(r"(\d[\d\s]*)\s*\([^)]*\)\s*руб", sentence, re.IGNORECASE)
     if amount_with_words_match:
-        return f"{amount_with_words_match.group(1).strip()} рублей"
+        return compact_key_term(
+            f"{amount_with_words_match.group(1).strip()} рублей",
+            32,
+            strip_leading_number=False,
+        )
     placeholder = first_placeholder_value(sentence, placeholder_names)
-    return placeholder or sentence
+    return compact_key_term(placeholder, 48) if placeholder else "не указано"
 
 
 def build_object_summary(contract_text: str) -> str:
@@ -696,7 +715,7 @@ def build_object_summary(contract_text: str) -> str:
 
     address_sentence = find_sentence(contract_text, ("адрес",))
     if address_sentence != "не указано":
-        return address_sentence
+        return compact_key_term(address_sentence)
     return object_type
 
 
@@ -705,7 +724,7 @@ def build_key_terms(contract_text: str) -> list[dict[str, str]]:
     if "13 августа 2027" in contract_text:
         term_value = "11 месяцев"
     else:
-        term_value = f"до {term_placeholder}" if term_placeholder else find_sentence(contract_text, ("действует",))
+        term_value = f"до {term_placeholder}" if term_placeholder else compact_key_term(find_sentence(contract_text, ("действует",)))
 
     payment_sentence = find_sentence(contract_text, ("ежемесячная", "плата"))
     payment_value = extract_money_or_placeholder(payment_sentence, ("сумма цифрами", "сумма"))
@@ -736,14 +755,14 @@ def build_key_terms(contract_text: str) -> list[dict[str, str]]:
         deposit_value = f"в размере {deposit_value}"
 
     return [
-        {"label": "Объект", "value": build_object_summary(contract_text)},
-        {"label": "Оплата в месяц", "value": payment_value},
-        {"label": "ЖКУ", "value": utilities_value},
-        {"label": "Срок", "value": term_value},
-        {"label": "Автопролонгация", "value": prolongation_value},
-        {"label": "Дети", "value": children_value},
-        {"label": "Животные", "value": pets_value},
-        {"label": "Депозит", "value": deposit_value},
+        {"label": "Объект", "value": compact_key_term(build_object_summary(contract_text))},
+        {"label": "Оплата в месяц", "value": compact_key_term(payment_value, 48, strip_leading_number=False)},
+        {"label": "ЖКУ", "value": compact_key_term(utilities_value, 48)},
+        {"label": "Срок", "value": compact_key_term(term_value, 48)},
+        {"label": "Автопролонгация", "value": compact_key_term(prolongation_value, 48)},
+        {"label": "Дети", "value": compact_key_term(children_value, 48)},
+        {"label": "Животные", "value": compact_key_term(pets_value, 48)},
+        {"label": "Депозит", "value": compact_key_term(deposit_value, 48)},
         {"label": "Споры", "value": "через AI-Arbitr"},
     ]
 

@@ -450,7 +450,13 @@ function LogoMark({ compact = false, onClick }) {
 }
 
 function KeyTermsCard({ terms, onTermClick }) {
-  const visibleTerms = (terms || []).filter((term) => term.value && term.value !== "не указано");
+  const compactValue = (value) => {
+    const normalized = String(value || "").replace(/\s+/g, " ").trim();
+    return normalized.length > 72 ? `${normalized.slice(0, 71).trim()}…` : normalized;
+  };
+  const visibleTerms = (terms || [])
+    .map((term) => ({ ...term, value: compactValue(term.value) }))
+    .filter((term) => term.value && term.value !== "не указано");
   if (!visibleTerms.length) return null;
   return (
     <section className="key-terms-card">
