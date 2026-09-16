@@ -439,7 +439,7 @@ function ModelSelector({ onSoon }) {
             event.target.value = "yandexgpt";
           }}
         >
-          <option value="yandexgpt">YandexGPT latest</option>
+          <option value="yandexgpt">YandexGPT 5.1 Pro</option>
           <option value="gigachat" disabled>GigaChat скоро</option>
           <option value="chatgpt" disabled>ChatGPT скоро</option>
           <option value="qwen" disabled>Qwen скоро</option>
