@@ -292,6 +292,14 @@ export default function LandingPage() {
         </div>
       </Section>
 
+      <Section eyebrow="Исполнение" title="Право исправить просрочку">
+        <div className="landing-problems">
+          <article><strong>Первое уведомление</strong><p>Сервис сообщает о просрочке и оставляет три рабочих дня для ответа или исполнения.</p></article>
+          <article><strong>Возможность ответить</strong><p>Если сторона выходит на связь, ее позиция фиксируется и учитывается без автоматической санкции.</p></article>
+          <article><strong>Расчет требования</strong><p>При молчании сервис цитирует договор и рассчитывает неустойку и подтвержденные убытки.</p></article>
+        </div>
+      </Section>
+
       <Section eyebrow="Доверие" title="Почему можно доверять?" className="landing-trust" >
         <div id="trust" className="landing-checks">
           {trustItems.map((item) => <p key={item}><ShieldCheck size={17} />{item}</p>)}
