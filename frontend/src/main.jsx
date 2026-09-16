@@ -28,6 +28,7 @@ import {
   Trash2,
 } from "lucide-react";
 import LandingPage from "./LandingPage.jsx";
+import KnowledgeBase from "./KnowledgeBase.jsx";
 import "./styles.css";
 
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
@@ -596,9 +597,10 @@ function App() {
   const reviewToken = getReviewTokenFromPath();
   const isPrivacyPath = window.location.pathname === "/privacy";
   const isLandingPath = window.location.pathname === "/landing";
+  const isKnowledgePath = window.location.pathname === "/knowledge" || window.location.pathname.startsWith("/knowledge/");
 
   useEffect(() => {
-    if (reviewToken || isPrivacyPath || isLandingPath) {
+    if (reviewToken || isPrivacyPath || isLandingPath || isKnowledgePath) {
       setAuthReady(true);
       return;
     }
@@ -633,7 +635,7 @@ function App() {
       }
     }
     bootstrapAuth();
-  }, [reviewToken, isPrivacyPath, isLandingPath]);
+  }, [reviewToken, isPrivacyPath, isLandingPath, isKnowledgePath]);
 
   useEffect(() => {
     if (!reviewToken) return;
@@ -1221,6 +1223,10 @@ function App() {
 
   if (isLandingPath) {
     return <LandingPage />;
+  }
+
+  if (isKnowledgePath) {
+    return <KnowledgeBase />;
   }
 
   if (!authReady) {

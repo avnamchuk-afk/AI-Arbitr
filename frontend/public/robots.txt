@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: http://51.250.95.80/sitemap.xml
