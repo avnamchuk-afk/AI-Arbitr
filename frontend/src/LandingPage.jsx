@@ -183,13 +183,13 @@ export default function LandingPage() {
           <h1>Без юристов. Без судов. Без формализма и бюрократии.</h1>
           <p>
             AI-Arbitr помогает составить договор, согласовать его со второй стороной,
-            подписать простой электронной подписью и открыть спор, если он возникнет.
+            подписать простой электронной подписью и разрешить спор, если он возникнет, за одну минуту.
           </p>
           <div className="landing-cta-row">
-            <a className="landing-primary" href={appHref}>Начать бесплатно <ArrowRight size={18} /></a>
+            <a className="landing-primary" href={appHref}>Бесплатно навсегда <ArrowRight size={18} /></a>
             <a className="landing-secondary" href="#how">Как это работает</a>
           </div>
-          <small>iPhone или Android | С VPN или без | Без ввода карты | Попробуйте без регистрации</small>
+          <small>Бесплатно для физических лиц, ИП и МСП | Без ввода карты | Попробуйте без регистрации</small>
         </div>
         <div className="landing-visual" aria-label="Клиентский путь AI-Arbitr">
           <div className="visual-card main">
@@ -365,7 +365,7 @@ export default function LandingPage() {
       <section className="landing-final">
         <h2>Готовы заключить договор за 5 минут?</h2>
         <p>Без юристов. Без судов. Без бюрократии. Бесплатно навсегда для физлиц, самозанятых, ИП и МСП.</p>
-        <a className="landing-primary" href={appHref}>Начать бесплатно <ArrowRight size={18} /></a>
+        <a className="landing-primary" href={appHref}>Бесплатно навсегда <ArrowRight size={18} /></a>
         <small>iPhone или Android | С VPN или без | Без ввода карты | Попробуйте без регистрации</small>
       </section>
     </main>
