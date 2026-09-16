@@ -665,6 +665,13 @@ function App() {
   }, [currentSession?.id]);
 
   useEffect(() => {
+    const requestedSessionId = new URLSearchParams(window.location.search).get("session");
+    if (!requestedSessionId || currentSession?.id === requestedSessionId) return;
+    const requestedSession = sessions.find((session) => session.id === requestedSessionId);
+    if (requestedSession) setCurrentSession(requestedSession);
+  }, [sessions, currentSession?.id]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, thinking, appNotice, sessionDetail?.latest_version?.id]);
 
@@ -720,7 +727,7 @@ function App() {
       setReviewNotice(data.detail || "Не удалось подтвердить согласие");
       return;
     }
-    setReviewNotice("Подпись зафиксирована. PDF с реквизитами направлен сторонам на email.");
+    setReviewNotice("Подпись зафиксирована. Первая сторона получила уведомление и должна подписать договор со своей стороны.");
     setReviewData((current) => ({
       ...current,
       finalized: Boolean(data.finalized),
@@ -1193,6 +1200,10 @@ function App() {
   const partyOneSigned = (sessionDetail?.participants || []).some(
     (participant) => participant.role === "party_1" && participant.approval_status === "approved"
   );
+  const currentParticipant = (sessionDetail?.participants || []).find(
+    (participant) => participant.user_id === userId
+  );
+  const completionConfirmed = Boolean(currentParticipant?.completed_at);
   const isEmptySession = currentSession && messages.length === 0 && !thinking && !appNotice;
   const composerPlaceholder =
     chatMode === "question"
@@ -1272,8 +1283,9 @@ function App() {
                   />
                   <input
                     value={reviewForm.email}
-                    onChange={(event) => setReviewForm((form) => ({ ...form, email: event.target.value }))}
                     placeholder="email@example.com"
+                    readOnly
+                    aria-readonly="true"
                     required
                   />
                   <input
@@ -1941,9 +1953,11 @@ function App() {
                       <button className="download-button" onClick={downloadCertificate}>
                         <Download size={16} /> Скачать справку
                       </button>
-                      <button className="download-button" onClick={markCompleted}>
-                        Договор исполнен
-                      </button>
+                      {!currentSession?.is_completed && (
+                        <button className="download-button" onClick={markCompleted} disabled={completionConfirmed}>
+                          {completionConfirmed ? "Ожидается вторая сторона" : "Договор исполнен"}
+                        </button>
+                      )}
                     </div>
                     {chatMode === "dispute" && (
                       <p className="panel-hint">

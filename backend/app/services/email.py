@@ -142,3 +142,27 @@ def send_dispute_notice(email: str, title: str, subject: str, body: str, app_lin
             smtp.starttls()
             smtp.login(settings.smtp_user, settings.smtp_password)
             smtp.send_message(message)
+
+
+def send_signature_progress_notice(email: str, title: str, app_link: str) -> None:
+    if not smtp_is_configured():
+        return
+    message = EmailMessage()
+    message["Subject"] = "Вторая сторона подписала договор в AI-Арбитр"
+    message["From"] = settings.smtp_from
+    message["To"] = email
+    message.set_content(
+        "Здравствуйте!\n\n"
+        f"Вторая сторона подписала договор: {title}.\n"
+        "Откройте сервис, проверьте финальную редакцию и подпишите договор со своей стороны.\n\n"
+        f"{app_link}\n"
+    )
+    if settings.smtp_port == 465:
+        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as smtp:
+            smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(message)
+    else:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
+            smtp.starttls()
+            smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(message)

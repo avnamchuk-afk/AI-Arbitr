@@ -219,7 +219,7 @@ def build_interaction_certificate_pdf(
         title="AI-Арбитр - справка электронного взаимодействия",
     )
 
-    content_hash = hash_text(final_version.content)
+    content_hash = session.final_content_hash or hash_text(final_version.content)
     story = [
         para("Справка о факте электронного взаимодействия", styles["AITitle"]),
         para(
@@ -248,6 +248,7 @@ def build_interaction_certificate_pdf(
                         f"UID стороны: {participant.user_id or participant.id}",
                         f"Статус: {participant.approval_status.value}",
                         f"Версия согласия: {participant.approved_version_id or 'не указана'}",
+                        f"Дата подписания: {participant.signed_at or 'не указана'}",
                         f"Дата присоединения: {participant.joined_at or 'не указана'}",
                         f"Email: {mask_email(user_email)}",
                         f"Email SHA-256: {email_hash or 'не указан'}",

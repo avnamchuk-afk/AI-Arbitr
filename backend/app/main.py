@@ -2,6 +2,7 @@ import uuid
 import re
 import ipaddress
 import json
+import hashlib
 from types import SimpleNamespace
 from io import BytesIO
 from datetime import datetime, time, timedelta, timezone
@@ -44,7 +45,7 @@ from app.services.auth import (
     token_expires_at,
 )
 from app.services.contract_templates import AI_ARBITR_DISPUTE_SECTION, build_housing_rent_contract, build_website_development_contract
-from app.services.email import send_contract_invite, send_contract_signed_notice, send_dispute_notice, send_magic_link, smtp_is_configured
+from app.services.email import send_contract_invite, send_contract_signed_notice, send_dispute_notice, send_magic_link, send_signature_progress_notice, smtp_is_configured
 from app.services.pdf import build_contract_pdf, build_interaction_certificate_pdf
 from app.services.privacy import contains_passport_like_data
 from app.services.prompts import CONTRACT_SYSTEM_PROMPT, SIMPLE_CONTRACT_SYSTEM_PROMPT, build_dispute_prompt
@@ -62,6 +63,12 @@ def ensure_runtime_schema() -> None:
             connection.execute(
                 text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE")
             )
+            connection.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ"))
+            connection.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS invite_expires_at TIMESTAMPTZ"))
+            connection.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pending_signing_content TEXT"))
+            connection.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS final_content_hash VARCHAR(64)"))
+            connection.execute(text("ALTER TABLE contract_participants ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ"))
+            connection.execute(text("ALTER TABLE contract_participants ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ"))
         elif engine.dialect.name == "sqlite":
             user_columns = connection.execute(text("PRAGMA table_info(users)")).fetchall()
             if not any(column[1] == "trusted_login_count" for column in user_columns):
@@ -69,6 +76,18 @@ def ensure_runtime_schema() -> None:
             session_columns = connection.execute(text("PRAGMA table_info(sessions)")).fetchall()
             if not any(column[1] == "is_deleted" for column in session_columns):
                 connection.execute(text("ALTER TABLE sessions ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT 0"))
+            for column_name, column_type in (
+                ("completed_at", "DATETIME"),
+                ("invite_expires_at", "DATETIME"),
+                ("pending_signing_content", "TEXT"),
+                ("final_content_hash", "VARCHAR(64)"),
+            ):
+                if not any(column[1] == column_name for column in session_columns):
+                    connection.execute(text(f"ALTER TABLE sessions ADD COLUMN {column_name} {column_type}"))
+            participant_columns = connection.execute(text("PRAGMA table_info(contract_participants)")).fetchall()
+            for column_name in ("signed_at", "completed_at"):
+                if not any(column[1] == column_name for column in participant_columns):
+                    connection.execute(text(f"ALTER TABLE contract_participants ADD COLUMN {column_name} DATETIME"))
 
 
 ensure_runtime_schema()
@@ -1759,7 +1778,13 @@ def email_other_contract_parties(session: ContractSession, user: User, subject: 
         if recipient is None or recipient.id == user.id or is_guest_user(recipient):
             continue
         try:
-            send_dispute_notice(recipient.email, session.title, subject, body, settings.app_base_url)
+            send_dispute_notice(
+                recipient.email,
+                session.title,
+                subject,
+                body,
+                f"{settings.app_base_url}/?session={session.id}",
+            )
         except Exception:
             continue
 
@@ -1778,22 +1803,12 @@ def serialize_session_summary(db: Session, session: ContractSession, user: User)
     current_participant = next((participant for participant in participants if participant.user_id == user.id), None)
     party_1 = next((participant for participant in participants if participant.role == ParticipantRole.party_1), None)
     party_2 = next((participant for participant in participants if participant.role == ParticipantRole.party_2), None)
-    completed_event_exists = (
-        db.query(Message.id)
-        .filter(
-            Message.session_id == session.id,
-            Message.role == MessageRole.system,
-            Message.content.startswith("Договор отмечен как исполненный"),
-        )
-        .first()
-        is not None
-    )
     return {
         "id": session.id,
         "owner_user_id": session.owner_user_id,
         "title": session.title,
         "status": session.status,
-        "is_completed": completed_event_exists,
+        "is_completed": session.is_completed,
         "is_deleted": session.is_deleted,
         "finalized_at": session.finalized_at,
         "download_token": session.download_token,
@@ -1815,7 +1830,7 @@ def count_completed_today(db: Session, user: User) -> int:
         db.query(ContractSession)
         .filter(
             ContractSession.owner_user_id == user.id,
-            ContractSession.is_completed.is_(True),
+            ContractSession.status == SessionStatus.finalized,
             ContractSession.finalized_at >= day_start,
             ContractSession.finalized_at <= day_end,
         )
@@ -1835,11 +1850,15 @@ def finalize_signed_session(db: Session, session: ContractSession, final_version
     session.status = SessionStatus.finalized
     session.finalized_at = now_utc()
     session.download_token = None
-    session.is_completed = True
+    session.invite_token = None
+    session.invite_expires_at = None
+    session.is_completed = False
+    session.completed_at = None
     final_version.is_final = True
     for participant in session.participants:
         participant.approval_status = ApprovalStatus.approved
         participant.approved_version_id = final_version.id
+        participant.signed_at = participant.signed_at or now_utc()
     db.add(Message(session_id=session.id, role=MessageRole.system, content="CONTRACT_FINALIZED"))
     record_analytics_event(db, "contract_finalized", session=session, user=owner, properties={"version_number": final_version.version_number})
     upsert_contract_analytics_snapshot(db, session)
@@ -1953,6 +1972,9 @@ def save_contract_version(db: Session, session: ContractSession, content: str) -
     for participant in session.participants:
         participant.approval_status = ApprovalStatus.pending
         participant.approved_version_id = None
+        participant.signed_at = None
+    session.pending_signing_content = None
+    session.final_content_hash = None
     db.add(version)
     db.add(Message(session_id=session.id, role=MessageRole.system, content=f"VERSION_CREATED|{version_number}"))
     db.flush()
@@ -1984,8 +2006,10 @@ def create_invite(
         raise HTTPException(status_code=403, detail="Зарегистрируйтесь по email, чтобы отправить ссылку согласования")
     if session.invite_token is None:
         session.invite_token = uuid.uuid4()
-        db.commit()
-        db.refresh(session)
+    if session.invite_expires_at is None or session.invite_expires_at < now_utc():
+        session.invite_expires_at = now_utc() + timedelta(days=7)
+    db.commit()
+    db.refresh(session)
     latest_version = get_latest_version(db, session)
     if latest_version is None:
         raise HTTPException(status_code=400, detail="Нет версии договора для согласования")
@@ -2041,6 +2065,11 @@ def get_session_by_review_token(db: Session, invite_token: str) -> ContractSessi
     session = db.query(ContractSession).filter(ContractSession.invite_token == invite_token).one_or_none()
     if session is None:
         raise HTTPException(status_code=404, detail="Ссылка согласования не найдена")
+    invite_deadline = session.invite_expires_at or (session.updated_at + timedelta(days=7))
+    if invite_deadline.tzinfo is None:
+        invite_deadline = invite_deadline.replace(tzinfo=timezone.utc)
+    if invite_deadline < now_utc():
+        raise HTTPException(status_code=410, detail="Срок действия ссылки согласования истек")
     return session
 
 
@@ -2107,6 +2136,11 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
         .filter(ContractParticipant.session_id == session.id, ContractParticipant.role == ParticipantRole.party_2)
         .one()
     )
+    if participant.approval_status == ApprovalStatus.approved:
+        return {"finalized": False, "party_two_signed": True}
+    invited_email = participant.user.email if participant.user else ""
+    if not invited_email or str(payload.email).lower() != invited_email.lower():
+        raise HTTPException(status_code=403, detail="Подписать договор можно только с email, на который направлено приглашение")
     user = db.query(User).filter(User.email == payload.email).one_or_none()
     if user is None:
         user = User(email=payload.email)
@@ -2115,6 +2149,7 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
 
     participant.user_id = user.id
     participant.joined_at = participant.joined_at or now_utc()
+    participant.signed_at = now_utc()
     participant.approval_status = ApprovalStatus.approved
     participant.approved_version_id = latest_version.id
     db.add(
@@ -2130,17 +2165,9 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
     )
     owner = db.get(User, session.owner_user_id)
     temp_content = apply_ephemeral_party_data(latest_version.content, payload)
-    temp_version = SimpleNamespace(content=temp_content)
-    messages = (
-        db.query(Message)
-        .filter(Message.session_id == session.id)
-        .order_by(Message.created_at.asc())
-        .all()
-    )
-    pdf_bytes = build_contract_pdf(session, temp_version, session.participants, messages)
-    for email in {str(payload.email), owner.email if owner and not is_guest_user(owner) else ""}:
-        if email:
-            send_contract_signed_notice(email, session.title, pdf_bytes)
+    session.pending_signing_content = temp_content
+    if owner and not is_guest_user(owner):
+        send_signature_progress_notice(owner.email, session.title, f"{settings.app_base_url}/?session={session.id}")
     record_analytics_event(
         db,
         "party_2_approved",
@@ -2213,9 +2240,14 @@ async def send_message(
         if notice_marker is None:
             answer = "Уведомление о просрочке по этому договору еще не направлялось."
         else:
-            db.add(Message(session_id=session.id, role=MessageRole.system, content=f"DELAY_RESPONSE|{user.id}|{now_utc().isoformat()}"))
-            answer = "Ответ зафиксирован и будет учтен. Автоматическое уведомление о нарушении не формируется."
-            email_other_contract_parties(session, user, "Получен ответ на уведомление о просрочке", payload.content.strip())
+            notice_parts = notice_marker.content.split("|", 3)
+            initiator_id = notice_parts[1] if len(notice_parts) > 1 else ""
+            if str(user.id) == initiator_id:
+                answer = "Ответ на уведомление должна направить другая сторона договора. Вы можете дополнить описание спора сообщением без слова «ОТВЕТ»."
+            else:
+                db.add(Message(session_id=session.id, role=MessageRole.system, content=f"DELAY_RESPONSE|{user.id}|{now_utc().isoformat()}"))
+                answer = "Ответ зафиксирован и будет учтен. Автоматическое уведомление о нарушении не формируется."
+                email_other_contract_parties(session, user, "Получен ответ на уведомление о просрочке", payload.content.strip())
         db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
         db.commit()
         return {"content": answer, "contract_saved": False, "reasoning": ""}
@@ -2264,10 +2296,17 @@ async def send_message(
             return {"content": answer, "contract_saved": False, "reasoning": ""}
 
         parts = notice_marker.content.split("|", 3)
+        initiator_id = parts[1] if len(parts) > 1 else ""
+        if str(user.id) != initiator_id:
+            answer = "Продолжить этот спор может сторона, которая направила уведомление. Вы можете ответить, начав сообщение со слова «ОТВЕТ»."
+            db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+            db.commit()
+            return {"content": answer, "contract_saved": False, "reasoning": ""}
         response_due = datetime.fromisoformat(parts[3]) if len(parts) > 3 else add_working_days(notice_marker.created_at, 3)
         response_exists = any(
             message.role == MessageRole.system
             and message.content.startswith("DELAY_RESPONSE|")
+            and message.content.split("|", 2)[1] != initiator_id
             and message.created_at > notice_marker.created_at
             for message in prior_messages
         )
@@ -2307,7 +2346,8 @@ async def send_message(
 
         if session.invite_token is None:
             session.invite_token = uuid.uuid4()
-            db.flush()
+        session.invite_expires_at = now_utc() + timedelta(days=7)
+        db.flush()
         check_daily_rate_limit(db, request, "contract_invite", user=user)
         latest_version = get_latest_version(db, session)
         if latest_version is None:
@@ -2720,6 +2760,7 @@ def approve_version(session_id: str, user: User = Depends(get_current_user), db:
     participant = get_user_participant(db, session, user)
     participant.approval_status = ApprovalStatus.approved
     participant.approved_version_id = latest_version.id
+    participant.signed_at = now_utc()
     db.add(
         Message(
             session_id=session.id,
@@ -2743,6 +2784,9 @@ def approve_version(session_id: str, user: User = Depends(get_current_user), db:
         for item in participants
     )
     if both_approved:
+        signing_content = session.pending_signing_content or latest_version.content
+        latest_version.content = signing_content
+        session.final_content_hash = hashlib.sha256(signing_content.encode("utf-8")).hexdigest()
         finalize_signed_session(db, session, latest_version)
     else:
         upsert_contract_analytics_snapshot(db, session)
@@ -2755,12 +2799,17 @@ def approve_version(session_id: str, user: User = Depends(get_current_user), db:
             .order_by(Message.created_at.asc())
             .all()
         )
-        pdf_bytes = build_contract_pdf(session, latest_version, participants, messages)
+        pdf_version = SimpleNamespace(content=signing_content)
+        pdf_bytes = build_contract_pdf(session, pdf_version, participants, messages)
         certificate_bytes = build_interaction_certificate_pdf(session, latest_version, participants, messages)
         calendar_link = build_contract_calendar_link(session, latest_version)
-        for item in participants:
-            if item.user and not is_guest_user(item.user):
-                send_contract_signed_notice(item.user.email, session.title, pdf_bytes, certificate_bytes, calendar_link)
+        try:
+            for item in participants:
+                if item.user and not is_guest_user(item.user):
+                    send_contract_signed_notice(item.user.email, session.title, pdf_bytes, certificate_bytes, calendar_link)
+        finally:
+            session.pending_signing_content = None
+            db.commit()
     return {"finalized": both_approved, "status": session.status}
 
 
@@ -2769,17 +2818,47 @@ def complete_contract(session_id: str, user: User = Depends(get_current_user), d
     session = get_accessible_session(db, session_id, user)
     if session.status != SessionStatus.finalized:
         raise HTTPException(status_code=400, detail="Отметить исполнение можно только по подписанному договору")
-    db.add(
-        Message(
-            session_id=session.id,
-            role=MessageRole.system,
-            content="Договор отмечен как исполненный. Чат сохранен в истории и защищен от удаления.",
+    participant = get_user_participant(db, session, user)
+    if participant.completed_at is not None:
+        return {
+            "completed": session.is_completed,
+            "message": (
+                "Договор уже закрыт"
+                if session.is_completed
+                else "Ваше подтверждение уже сохранено. Ожидается подтверждение второй стороны"
+            ),
+        }
+    participant.completed_at = now_utc()
+    both_confirmed = all(item.user_id is not None and item.completed_at is not None for item in session.participants)
+    if both_confirmed and not session.is_completed:
+        session.is_completed = True
+        session.completed_at = now_utc()
+        db.add(
+            Message(
+                session_id=session.id,
+                role=MessageRole.system,
+                content="Договор отмечен обеими сторонами как исполненный. Чат сохранен в истории и защищен от удаления.",
+            )
         )
-    )
-    record_analytics_event(db, "contract_completed", session=session, user=user)
+        record_analytics_event(db, "contract_completed", session=session, user=user)
+    elif not both_confirmed:
+        db.add(
+            Message(
+                session_id=session.id,
+                role=MessageRole.system,
+                content=f"Исполнение подтверждено стороной {participant.role.value}. Ожидается подтверждение второй стороны.",
+            )
+        )
     upsert_contract_analytics_snapshot(db, session)
     db.commit()
-    return {"message": "Договор отмечен как исполненный"}
+    return {
+        "completed": both_confirmed,
+        "message": (
+            "Договор закрыт: исполнение подтверждено обеими сторонами"
+            if both_confirmed
+            else "Ваше подтверждение сохранено. Для закрытия требуется подтверждение второй стороны"
+        ),
+    }
 
 
 @app.post("/sessions/{session_id}/request-changes")
