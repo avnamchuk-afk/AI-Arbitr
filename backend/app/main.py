@@ -124,16 +124,14 @@ DAILY_ACTION_LIMIT = 100
 DEMO_SESSION_TITLE = "пример"
 LEGACY_DEMO_SESSION_TITLE = "Пример: договор на лендинг"
 DEMO_USER_PROMPT = "Составь договор найма"
-DEMO_REASONING_NOTE = """Что я делаю:
-• Понятно, делаем договор найма жилого помещения.
-• Проверяю применимые нормы ГК РФ о найме жилого помещения.
-• Существенные условия:
+DEMO_REASONING_NOTE = """Ключевые условия для примера договора найма:
 - предмет договора: квартира или иное жилое помещение;
 - стороны договора: наймодатель и наниматель;
 - срок найма;
 - размер платы за найм и порядок ее внесения;
 - порядок пользования жилым помещением.
-• Обычные условия для долгосрочного договора найма:
+
+Обычные условия для долгосрочного договора найма:
 - порядок передачи квартиры по акту;
 - передача ключей и фиксация их количества;
 - оплата ЖКУ по счетчикам и по квитанциям;
@@ -146,8 +144,7 @@ DEMO_REASONING_NOTE = """Что я делаю:
 - запрет субнайма, перепланировки и посуточной сдачи без согласия;
 - порядок текущего ремонта, устранения аварий и возмещения ущерба;
 - правила проживания, гости, животные, курение и тишина;
-- порядок разрешения споров через AI-Арбитр как рекомендательный механизм.
-• Генерирую первую версию договора."""
+- порядок разрешения споров через AI-Арбитр."""
 DEMO_CONTRACT_TEXT = """### Договор найма жилого помещения
 
 **1. Стороны договора**
@@ -348,30 +345,7 @@ CONCRETE_CONTRACT_MARKERS = (
 
 
 def build_reasoning_note(content: str) -> str:
-    normalized = content.lower()
-    if is_housing_rent_request(content):
-        steps = [
-            "Понятно, делаем договор найма жилого помещения.",
-            "Проверяю применимые нормы ГК РФ о найме жилого помещения.",
-            "Выделяю существенные условия: жилое помещение, стороны, срок найма, размер и порядок оплаты.",
-            "Добавляю обычные условия: порядок передачи квартиры, коммунальные платежи, ремонт, доступ в помещение, ответственность.",
-            "Учитываю спорные места: депозит, просрочка оплаты, повреждение имущества, досрочное расторжение.",
-            "Добавляю вымышленные данные, чтобы договор сразу было удобно читать.",
-            "Позже заменю вымышленные данные на реальные данные сторон и условия сделки.",
-            "Генерирую первую версию договора.",
-        ]
-    else:
-        steps = [
-            "Проверяю, достаточно ли понятно описан вид договора.",
-            "Проверяю применимые нормы ГК РФ и обязательные условия договора.",
-            "Выделяю существенные условия, без которых договор может работать плохо.",
-            "Добавляю обычные условия: порядок оплаты, сроки, приемка, ответственность, изменение и расторжение.",
-            "Учитываю типовые спорные места и формулирую условия понятным языком.",
-            "Добавляю вымышленные данные, чтобы договор сразу было удобно читать.",
-            "Позже заменю вымышленные данные на реальные данные сторон и условия сделки.",
-            "Генерирую первую версию договора.",
-        ]
-    return "Что я делаю:\n" + "\n".join(f"• {step}" for step in steps)
+    return ""
 
 
 def needs_service_type_clarification(content: str) -> bool:
@@ -590,23 +564,11 @@ def apply_contract_number(contract_text: str, version_number: int) -> str:
 
 
 def build_question_reasoning_note(question: str) -> str:
-    return (
-        "Что я делаю:\n"
-        "• Вопрос понятен.\n"
-        "• Проверяю его по текущей редакции договора.\n"
-        "• Сверяю ответ с обычной практикой и нормами ГК РФ.\n"
-        "• Отвечаю коротко и простым языком, без генерации новой версии договора."
-    )
+    return ""
 
 
 def build_update_reasoning_note(change: str) -> str:
-    return (
-        "Что я делаю:\n"
-        "• Нужно добавить новое условие в договор.\n"
-        "• Проверяю, не противоречит ли оно ГК РФ и логике договора.\n"
-        "• Ищу раздел договора, куда его правильно включить.\n"
-        "• Формулирую норму и готовлю новую редакцию договора."
-    )
+    return ""
 
 
 def looks_like_contract_text(text: str) -> bool:
@@ -1077,11 +1039,7 @@ def extract_norm_option(options_text: str, option: str) -> str | None:
 
 def build_custom_norm_review(custom_text: str) -> str:
     return (
-        "Проверяю вашу редакцию:\n"
-        "• не нарушает ли она баланс сторон;\n"
-        "• достаточно ли ясно описывает обязанность;\n"
-        "• можно ли будет применить ее на практике.\n\n"
-        "Редакция выглядит допустимой для включения в договор.\n\n"
+        "Редакция условия:\n\n"
         f"{custom_text.strip()}\n\n"
         "Фиксирую новый пункт договора.\n\n"
         "Переходим к согласованию?"
@@ -2095,21 +2053,14 @@ async def send_message(
     ):
         latest_version = get_latest_version(db, session)
         version_number = latest_version.version_number if latest_version else 1
-        reasoning = (
-            "Что я делаю:\n"
-            f"• Готовлю версию № {version_number} для согласования.\n"
-            "• Проверяю, что добавленные условия учтены.\n"
-            "• Версия готова к отправке второй стороне."
-        )
         answer = (
             f"Готовлю версию № {version_number}.\n\n"
             "Версия готова.\n\n"
             "Введите e-mail второй стороны, на который направить ссылку для согласования."
         )
-        db.add(Message(session_id=session.id, role=MessageRole.system, content=reasoning))
         db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
         db.commit()
-        return {"content": answer, "contract_saved": False, "reasoning": reasoning, "next_action": "email"}
+        return {"content": answer, "contract_saved": False, "reasoning": "", "next_action": "email"}
 
     if (
         latest_version_before_answer is not None
@@ -2124,12 +2075,7 @@ async def send_message(
             selected_norm = extract_norm_option(last_assistant_before_answer, "expanded")
         else:
             selected_norm = payload.content.strip()
-            reasoning = (
-                "Что я делаю:\n"
-                "• Пользователь предложил свою редакцию условия.\n"
-                "• Проверяю, не нарушает ли она баланс сторон.\n"
-                "• Проверяю ясность формулировки и возможность применить ее на практике."
-            )
+            reasoning = ""
 
         if not selected_norm:
             selected_norm = payload.content.strip()
@@ -2145,36 +2091,12 @@ async def send_message(
 
     if latest_version_before_answer is None and not is_contract_update and needs_service_type_clarification(payload.content):
         answer = build_service_type_clarification(payload.content)
-        db.add(
-            Message(
-                session_id=session.id,
-                role=MessageRole.system,
-                content=(
-                    "Что я делаю:\n"
-                    "• Вижу, что запрос относится к договору оказания услуг.\n"
-                    "• Вид услуги указан неясно или похож на опечатку.\n"
-                    "• Сначала уточняю предмет договора, чтобы не подготовить неверный документ."
-                ),
-            )
-        )
         db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
         db.commit()
         return {"content": answer, "contract_saved": False, "reasoning": ""}
 
     if latest_version_before_answer is None and not is_contract_update and needs_broad_contract_clarification(payload.content):
         answer = build_broad_contract_clarification()
-        db.add(
-            Message(
-                session_id=session.id,
-                role=MessageRole.system,
-                content=(
-                    "Что я делаю:\n"
-                    "• Вижу, что запрос слишком общий.\n"
-                    "• Сначала уточняю предмет договора и роли сторон.\n"
-                    "• После уточнения подготовлю проект без лишних догадок."
-                ),
-            )
-        )
         db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
         db.commit()
         return {"content": answer, "contract_saved": False, "reasoning": ""}
@@ -2267,18 +2189,11 @@ async def send_message(
 
             filled_contract = fill_demo_contract_data(latest_version_before_answer.content, values)
             save_contract_version(db, session, filled_contract)
-            reasoning = (
-                "Что я делаю:\n"
-                "• Проверяю реальные данные стороны.\n"
-                "• Изменяю вымышленные данные в тексте договора.\n"
-                "• Сохраняю новую версию перед согласованием."
-            )
             answer = (
                 "Изменяю вымышленные данные на реальные.\n\n"
                 "Данные внесены в договор успешно.\n\n"
                 "Переходим к отправке ссылки второй стороне для согласования?"
             )
-            db.add(Message(session_id=session.id, role=MessageRole.system, content=reasoning))
             db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
             db.commit()
             return {"content": answer, "contract_saved": True, "reasoning": ""}
