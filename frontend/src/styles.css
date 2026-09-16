@@ -502,6 +502,68 @@ button:hover {
   font-size: 14px;
 }
 
+.auth-steps,
+.agreement-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-step,
+.agreement-step {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid rgb(64 90 138 / 18%);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgb(255 255 255 / 42%);
+}
+
+.auth-step.active,
+.agreement-step.active {
+  border-color: rgb(64 90 138 / 42%);
+  background: rgb(255 255 255 / 68%);
+}
+
+.agreement-step.done {
+  border-color: rgb(43 126 110 / 26%);
+  background: rgb(255 255 255 / 54%);
+}
+
+.auth-step > span,
+.agreement-step > span {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgb(64 90 138 / 82%);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.agreement-step.done > span {
+  background: rgb(43 126 110 / 86%);
+}
+
+.auth-step strong,
+.agreement-step strong {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.auth-step p,
+.agreement-step p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .auth-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;

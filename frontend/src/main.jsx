@@ -588,6 +588,7 @@ function App() {
   const [reviewNotice, setReviewNotice] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
   const [inviteSending, setInviteSending] = useState(false);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
   const messagesEndRef = useRef(null);
   const gestureRef = useRef({ x: 0, y: 0 });
 
@@ -771,6 +772,7 @@ function App() {
     event.preventDefault();
     setLoginNotice("");
     setDevLink("");
+    setAuthSubmitting(true);
     const endpoint =
       afterAuthAction === "invite" && isGuest && authMode === "register"
         ? "/auth/quick-register"
@@ -779,31 +781,36 @@ function App() {
           : "/auth/login";
     const payload =
       authMode === "register" ? { email, personal_data_accepted: accepted } : { email };
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setLoginNotice(data.detail || "Не удалось отправить ссылку. Проверьте email и попробуйте еще раз.");
-      return;
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setLoginNotice(data.detail || "Не удалось отправить ссылку. Проверьте email и попробуйте еще раз.");
+        return;
+      }
+      if (endpoint === "/auth/quick-register") {
+        setEmail(data.email || email);
+        setUserId(data.id || userId);
+        setIsGuest(false);
+        setAuthed(true);
+        setAuthPromptOpen(false);
+        setAfterAuthAction("");
+        setLoginNotice("");
+        setAppNotice(`Шаг 1 готов: договор сохранен за ${data.email || email}. Шаг 2: отправляю ссылку второй стороне.`);
+        await sendInviteRequest();
+        loadSessions();
+        return;
+      }
+      setLoginNotice(data.message);
+      setDevLink(data.dev_link || "");
+    } finally {
+      setAuthSubmitting(false);
     }
-    if (endpoint === "/auth/quick-register") {
-      setEmail(data.email || email);
-      setUserId(data.id || userId);
-      setIsGuest(false);
-      setAuthed(true);
-      setAuthPromptOpen(false);
-      setAfterAuthAction("");
-      setLoginNotice("");
-      await sendInviteRequest();
-      loadSessions();
-      return;
-    }
-    setLoginNotice(data.message);
-    setDevLink(data.dev_link || "");
   }
 
   async function createSession() {
@@ -1008,12 +1015,16 @@ function App() {
   }
 
   async function createInvite() {
+    if (!partyEmail.trim()) {
+      setAppNotice("Введите email второй стороны, чтобы отправить ссылку согласования.");
+      return;
+    }
     if (isGuest) {
       setAuthMode("register");
       setAfterAuthAction("invite");
-      setAuthPromptTitle("Сохранить и отправить");
+      setAuthPromptTitle("Шаг 1. Сохранить договор");
       setAuthPromptCopy(
-        "Укажите вашу почту. Если email новый, я сразу сохраню сессию и отправлю ссылку второй стороне. Если email уже зарегистрирован, понадобится вход по ссылке из письма."
+        `Сначала привяжем этот договор к вашей почте. Это не письмо второй стороне. После сохранения я отдельным шагом отправлю ссылку согласования на ${partyEmail.trim()}.`
       );
       setAuthPromptOpen(true);
       setLoginNotice("");
@@ -1362,12 +1373,36 @@ function App() {
           <form className="login-form auth-modal" onSubmit={login}>
             <h1>{authPromptTitle}</h1>
             <p className="auth-copy">{authPromptCopy}</p>
+            {afterAuthAction === "invite" && (
+              <div className="auth-steps" aria-label="Шаги отправки ссылки">
+                <div className="auth-step active">
+                  <span>1</span>
+                  <div>
+                    <strong>Сохранить вашу сессию</strong>
+                    <p>Договор будет привязан к вашей почте, чтобы не потерять историю.</p>
+                  </div>
+                </div>
+                <div className="auth-step">
+                  <span>2</span>
+                  <div>
+                    <strong>Отправить ссылку второй стороне</strong>
+                    <p>{partyEmail.trim() || "Email второй стороны будет использован на следующем шаге."}</p>
+                  </div>
+                </div>
+              </div>
+            )}
             <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="email@example.com" />
             <label className="checkbox-row">
               <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
               <span>Я согласен на обработку персональных данных</span>
             </label>
-            <button>{afterAuthAction === "invite" ? "Сохранить и отправить" : "Отправить ссылку для входа"}</button>
+            <button disabled={authSubmitting}>
+              {authSubmitting
+                ? "Сохраняю..."
+                : afterAuthAction === "invite"
+                  ? "Сохранить мою сессию"
+                  : "Отправить ссылку для входа"}
+            </button>
             {loginNotice && <p className="notice">{loginNotice}</p>}
             {devLink && (
               <a className="dev-link" href={devLink}>
@@ -1382,7 +1417,7 @@ function App() {
                 setAfterAuthAction("");
               }}
             >
-              Продолжить без отправки
+              Отмена
             </button>
           </form>
         </div>
@@ -1824,6 +1859,22 @@ function App() {
                           Введите данные второй стороны и email. На него будет направлена ссылка для просмотра
                           договора и подтверждения согласия без регистрации.
                         </p>
+                        <div className="agreement-steps" aria-label="Порядок отправки на согласование">
+                          <div className={isGuest ? "agreement-step active" : "agreement-step done"}>
+                            <span>{isGuest ? "1" : <Check size={13} />}</span>
+                            <div>
+                              <strong>{isGuest ? "Сначала сохранить вашу сессию" : "Ваша сессия сохранена"}</strong>
+                              <p>{isGuest ? "Это нужно, чтобы история договора не потерялась." : email}</p>
+                            </div>
+                          </div>
+                          <div className={isGuest ? "agreement-step" : "agreement-step active"}>
+                            <span>2</span>
+                            <div>
+                              <strong>Отправить ссылку второй стороне</strong>
+                              <p>После отправки вы увидите адрес получателя и копию письма у себя.</p>
+                            </div>
+                          </div>
+                        </div>
                         <KeyTermsCard terms={sessionDetail?.key_terms} onTermClick={showCurrentContract} />
                         <div className="party-form">
                           <p className="form-hint">
