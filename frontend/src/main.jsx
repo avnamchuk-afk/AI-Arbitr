@@ -41,6 +41,7 @@ const MIN_REGULAR_THINKING_MS = 1500;
 const DEMO_REVIEW_PASSPORT = "1111 111111";
 const DEFAULT_AI_MODEL = "qwen";
 const LAST_SESSION_KEY = "ai-arbitr-current-session";
+const sessionModeKey = (sessionId) => `ai-arbitr-chat-mode:${sessionId}`;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -665,6 +666,8 @@ function App() {
 
   useEffect(() => {
     if (!currentSession) return;
+    const savedMode = localStorage.getItem(sessionModeKey(currentSession.id));
+    setChatMode(["question", "add", "agree", "dispute"].includes(savedMode) ? savedMode : "idle");
     loadSession(currentSession.id);
   }, [currentSession?.id]);
 
@@ -971,6 +974,7 @@ function App() {
         setQuestionResolved(true);
       }
       setChatMode("idle");
+      localStorage.removeItem(sessionModeKey(currentSession.id));
       if (data.next_action === "sent") {
         if (data.invite_link) setInviteLink(data.invite_link);
         setAppNotice(
@@ -1064,6 +1068,7 @@ function App() {
   function startQuestion() {
     setAppNotice("");
     setChatMode("question");
+    if (currentSession) localStorage.setItem(sessionModeKey(currentSession.id), "question");
     setDraft("");
     setQuestionResolved(false);
     setToast("Режим вопроса включен");
@@ -1072,6 +1077,7 @@ function App() {
   function startAddition() {
     setAppNotice("");
     setChatMode("add");
+    if (currentSession) localStorage.setItem(sessionModeKey(currentSession.id), "add");
     setDraft("");
     setQuestionResolved(false);
     setToast("Режим добавления условия включен");
@@ -1080,12 +1086,14 @@ function App() {
   function startAgreement() {
     setAppNotice("Проверьте карточку условий и введите email второй стороны.");
     setChatMode("agree");
+    if (currentSession) localStorage.setItem(sessionModeKey(currentSession.id), "agree");
     setQuestionResolved(false);
   }
 
   function startDispute() {
     setAppNotice("");
     setChatMode("dispute");
+    if (currentSession) localStorage.setItem(sessionModeKey(currentSession.id), "dispute");
     setDraft("");
     setQuestionResolved(false);
     setToast("Режим спора включен");
