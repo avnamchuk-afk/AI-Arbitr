@@ -2050,6 +2050,8 @@ def get_review_contract(invite_token: str, db: Session = Depends(get_db)):
     return {
         "session_id": session.id,
         "title": session.title,
+        "version_number": latest_version.version_number,
+        "version_created_at": latest_version.created_at,
         "status": session.status,
         "contract": latest_version.content,
         "key_terms": build_key_terms(latest_version.content),

@@ -593,6 +593,7 @@ function App() {
   });
   const [reviewNotice, setReviewNotice] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewFormOpen, setReviewFormOpen] = useState(false);
   const [inviteSending, setInviteSending] = useState(false);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const messagesEndRef = useRef(null);
@@ -705,6 +706,35 @@ function App() {
   function getReviewTokenFromPath() {
     const match = window.location.pathname.match(/^\/review\/([^/]+)$/);
     return match ? match[1] : "";
+  }
+
+  function reviewLegalTitle(contract, fallback) {
+    const firstLine = (contract || "").split("\n").find((line) => line.trim()) || fallback || "Договор";
+    return firstLine
+      .replace(/^\s{0,3}#{1,6}\s*/, "")
+      .replace(/\*\*/g, "")
+      .replace(/\s*№\s*\S+.*$/i, "")
+      .trim()
+      .toLocaleLowerCase("ru-RU")
+      .replace(/^./, (letter) => letter.toLocaleUpperCase("ru-RU"));
+  }
+
+  function reviewContractBody(contract) {
+    const lines = (contract || "").split("\n");
+    const firstContentLine = lines.findIndex((line) => line.trim());
+    if (firstContentLine >= 0 && /договор/i.test(lines[firstContentLine])) {
+      lines.splice(firstContentLine, 1);
+    }
+    return lines.join("\n").trim();
+  }
+
+  function formatReviewDate(value) {
+    if (!value) return "";
+    return new Intl.DateTimeFormat("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date(value));
   }
 
   async function loadReview(token) {
@@ -1294,31 +1324,29 @@ function App() {
         <section className="review-shell">
           <header className="review-header">
             <LogoMark compact />
-            <h1>{reviewData?.title || "Согласование договора"}</h1>
-            <p>Проверьте условия, откройте PDF при необходимости и подпишите, если все подходит.</p>
+            {reviewData && (
+              <>
+                <h1>{reviewLegalTitle(reviewData.contract, reviewData.title)}</h1>
+                <p>Версия № {reviewData.version_number} от {formatReviewDate(reviewData.version_created_at)}</p>
+              </>
+            )}
           </header>
           {reviewLoading && <p className="notice">Загружаю договор...</p>}
           {reviewNotice && <p className="app-notice">{reviewNotice}</p>}
           {reviewData && (
             <>
-              <div className="review-actions">
-                <a className="review-link-button" href={reviewData.pdf_link} target="_blank" rel="noreferrer">
-                  <Download size={16} /> Открыть PDF
-                </a>
-              </div>
-              <KeyTermsCard terms={reviewData.key_terms} />
-              <article className="review-contract">{reviewData.contract}</article>
+              <article className="review-contract">{reviewContractBody(reviewData.contract)}</article>
               {reviewData.approved || reviewData.finalized ? (
                 <div className="review-approved">
                   <Check size={18} /> Подпись уже зафиксирована.
                 </div>
+              ) : !reviewFormOpen ? (
+                <button className="review-agree-button" type="button" onClick={() => setReviewFormOpen(true)}>
+                  <Check size={17} /> Согласовать
+                </button>
               ) : (
                 <form className="review-form" onSubmit={approveReview}>
-                  <h2>Подписать договор</h2>
-                  <p className="form-hint">
-                    Эти данные используются для формирования PDF и отправки сторонам.
-                    После отправки полные реквизиты удаляются, в системе остаются только маски и технический лог.
-                  </p>
+                  <h2>Данные для подписания</h2>
                   <input
                     value={reviewForm.passport}
                     onChange={(event) => setReviewForm((form) => ({ ...form, passport: event.target.value }))}

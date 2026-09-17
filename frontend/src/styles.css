@@ -61,9 +61,8 @@ button:hover {
 
 .review-page {
   min-height: 100vh;
-  padding: 20px;
-  background:
-    linear-gradient(135deg, #edf4f2 0%, #f7f5ef 48%, #eef2f7 100%);
+  padding: 16px;
+  background: #f5f6f8;
 }
 
 .privacy-page {
@@ -135,7 +134,7 @@ button:hover {
 }
 
 .review-shell {
-  width: min(920px, 100%);
+  width: min(760px, 100%);
   margin: 0 auto;
   display: grid;
   gap: 16px;
@@ -144,13 +143,14 @@ button:hover {
 .review-header {
   display: grid;
   gap: 6px;
-  padding: 14px 0 2px;
+  padding: 4px 0 2px;
 }
 
 .review-header h1 {
   margin: 0;
   color: var(--ink);
-  font-size: 24px;
+  font-size: 22px;
+  line-height: 1.2;
   letter-spacing: 0;
 }
 
@@ -332,17 +332,54 @@ button:hover {
 }
 
 .review-contract {
-  max-height: 54vh;
-  overflow: auto;
   white-space: pre-wrap;
-  line-height: 1.34;
-  padding: 12px;
-  font-size: 13px;
+  line-height: 1.38;
+  padding: 16px;
+  font-size: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-strong);
   box-shadow: var(--shadow);
   backdrop-filter: var(--blur);
+}
+
+.review-agree-button {
+  position: sticky;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 3;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: #fff;
+  background: var(--accent-strong);
+  box-shadow: 0 8px 22px rgb(30 45 72 / 20%);
+  font-weight: 700;
+}
+
+@media (max-width: 600px) {
+  .review-page {
+    padding: 10px;
+  }
+
+  .review-shell {
+    gap: 10px;
+  }
+
+  .review-header h1 {
+    font-size: 19px;
+  }
+
+  .review-contract {
+    padding: 12px;
+    font-size: 12px;
+    line-height: 1.32;
+  }
 }
 
 .review-form {
