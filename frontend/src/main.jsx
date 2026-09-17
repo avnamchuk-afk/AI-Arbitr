@@ -40,6 +40,7 @@ const MIN_INITIAL_THINKING_MS = 3200;
 const MIN_REGULAR_THINKING_MS = 1500;
 const DEMO_REVIEW_PASSPORT = "1111 111111";
 const DEFAULT_AI_MODEL = "qwen";
+const LAST_SESSION_KEY = "ai-arbitr-current-session";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -668,11 +669,24 @@ function App() {
   }, [currentSession?.id]);
 
   useEffect(() => {
-    const requestedSessionId = new URLSearchParams(window.location.search).get("session");
+    const requestedSessionId =
+      new URLSearchParams(window.location.search).get("session") || localStorage.getItem(LAST_SESSION_KEY);
     if (!requestedSessionId || currentSession?.id === requestedSessionId) return;
     const requestedSession = sessions.find((session) => session.id === requestedSessionId);
-    if (requestedSession) setCurrentSession(requestedSession);
+    if (requestedSession) {
+      setCurrentSession(requestedSession);
+    } else if (sessions.length) {
+      localStorage.removeItem(LAST_SESSION_KEY);
+    }
   }, [sessions, currentSession?.id]);
+
+  useEffect(() => {
+    if (!currentSession?.id || window.location.pathname !== "/") return;
+    localStorage.setItem(LAST_SESSION_KEY, currentSession.id);
+    const url = new URL(window.location.href);
+    url.searchParams.set("session", currentSession.id);
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [currentSession?.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -870,6 +884,8 @@ function App() {
     setToast("Договор перемещен в удаленные");
     loadSessions();
     if (currentSession?.id === session.id) {
+      localStorage.removeItem(LAST_SESSION_KEY);
+      window.history.replaceState({}, "", "/");
       setCurrentSession(null);
       setSessionDetail(null);
       setMessages([]);
@@ -1107,6 +1123,8 @@ function App() {
       return true;
     }
     if (currentSession) {
+      localStorage.removeItem(LAST_SESSION_KEY);
+      window.history.replaceState({}, "", "/");
       setCurrentSession(null);
       setSessionDetail(null);
       setMessages([]);
@@ -1666,6 +1684,8 @@ function App() {
           ) : (
             <button
               onClick={() => {
+                localStorage.removeItem(LAST_SESSION_KEY);
+                window.history.replaceState({}, "", "/");
                 fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" })
                   .then(() => fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" }))
                   .then((res) => res.json())
