@@ -139,9 +139,13 @@ class InviteRequest(BaseModel):
 
 
 class ReviewApproveRequest(BaseModel):
-    passport: str
+    party_type: str = "individual"
+    full_name: str
+    passport: str = ""
     phone: str
     inn: str = ""
+    ogrn: str = ""
+    organization_name: str = ""
     email: EmailStr
     personal_data_accepted: bool
 
@@ -1004,11 +1008,23 @@ def mask_tail(value: str, visible_tail: int = 2) -> str:
 
 
 def apply_ephemeral_party_data(contract_text: str, payload: ReviewApproveRequest) -> str:
-    updated = contract_text.replace("1111 111111", payload.passport)
+    updated = contract_text.replace("Иванов Иван Иванович", payload.full_name)
+    if payload.passport:
+        updated = updated.replace("1111 111111", payload.passport)
+    if payload.party_type == "business":
+        details = [
+            f"Организация / ИП: {payload.organization_name}",
+            f"Подписант: {payload.full_name}",
+            f"ИНН: {payload.inn}",
+            f"ОГРН / ОГРНИП: {payload.ogrn}",
+        ]
+        updated += "\n\nРеквизиты Стороны 2:\n" + "\n".join(details)
     if payload.phone and "телефон" not in updated.lower():
         updated += f"\n\nТелефон Стороны 2: {payload.phone}"
-    if payload.inn and "инн" not in updated.lower():
+    if payload.inn and payload.party_type != "business" and "инн" not in updated.lower():
         updated += f"\nИНН Стороны 2: {payload.inn}"
+    if payload.email and str(payload.email).lower() not in updated.lower():
+        updated += f"\nEmail Стороны 2: {payload.email}"
     return updated
 
 
@@ -2067,6 +2083,22 @@ def get_review_contract(invite_token: str, db: Session = Depends(get_db)):
 def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db: Session = Depends(get_db)):
     if not payload.personal_data_accepted:
         raise HTTPException(status_code=400, detail="Нужно согласие на обработку персональных данных")
+    if payload.party_type not in {"individual", "business"}:
+        raise HTTPException(status_code=400, detail="Выберите тип стороны")
+    if len(payload.full_name.strip().split()) < 2:
+        raise HTTPException(status_code=400, detail="Укажите ФИО полностью")
+    phone_digits = re.sub(r"\D", "", payload.phone)
+    if not 10 <= len(phone_digits) <= 15:
+        raise HTTPException(status_code=400, detail="Проверьте номер телефона")
+    if payload.party_type == "individual" and not re.fullmatch(r"\d{4}\s?\d{6}", payload.passport.strip()):
+        raise HTTPException(status_code=400, detail="Паспорт нужно указать в формате 0000 000000")
+    if payload.party_type == "business":
+        if not payload.organization_name.strip():
+            raise HTTPException(status_code=400, detail="Укажите наименование организации или ИП")
+        if not re.fullmatch(r"\d{10}|\d{12}", payload.inn.strip()):
+            raise HTTPException(status_code=400, detail="ИНН должен содержать 10 или 12 цифр")
+        if not re.fullmatch(r"\d{13}|\d{15}", payload.ogrn.strip()):
+            raise HTTPException(status_code=400, detail="ОГРН или ОГРНИП должен содержать 13 или 15 цифр")
 
     session = get_session_by_review_token(db, invite_token)
     latest_version = get_latest_version(db, session)
@@ -2107,8 +2139,10 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
             role=MessageRole.system,
             content=(
                 f"VERSION_APPROVED|{latest_version.version_number}|{payload.email}"
+                f"|type:{payload.party_type}"
                 f"|passport:{mask_tail(payload.passport, 2)}|phone:{mask_tail(payload.phone, 2)}"
                 f"|inn:{mask_tail(payload.inn, 2) if payload.inn else ''}"
+                f"|ogrn:{mask_tail(payload.ogrn, 2) if payload.ogrn else ''}"
             ),
         )
     )
@@ -2121,7 +2155,11 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
         "party_2_approved",
         session=session,
         user=user,
-        properties={"version_number": latest_version.version_number, "role": "party_2"},
+        properties={
+            "version_number": latest_version.version_number,
+            "role": "party_2",
+            "party_type": payload.party_type,
+        },
     )
     upsert_contract_analytics_snapshot(db, session)
     db.commit()

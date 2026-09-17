@@ -585,9 +585,13 @@ function App() {
   const [afterAuthAction, setAfterAuthAction] = useState("");
   const [reviewData, setReviewData] = useState(null);
   const [reviewForm, setReviewForm] = useState({
+    partyType: "individual",
+    fullName: "Иванов Иван Иванович",
     passport: DEMO_REVIEW_PASSPORT,
     phone: "+7 900 000-00-00",
     inn: "",
+    ogrn: "",
+    organizationName: "",
     email: "",
     accepted: false,
   });
@@ -769,10 +773,12 @@ function App() {
     event.preventDefault();
     if (!reviewToken || reviewSubmitting) return;
     setReviewNotice("");
-    const demoDataLeft = reviewForm.passport.trim() === DEMO_REVIEW_PASSPORT;
+    const demoDataLeft =
+      reviewForm.fullName.trim() === "Иванов Иван Иванович" ||
+      (reviewForm.partyType === "individual" && reviewForm.passport.trim() === DEMO_REVIEW_PASSPORT);
     if (
       demoDataLeft &&
-      !window.confirm("В форме остались примерные данные Иванова/паспорт 1111 111111. Подписать с ними или сначала заменить на реальные?")
+      !window.confirm("В форме остались примерные ФИО или паспорт. Подписать с ними или сначала заменить на реальные данные?")
     ) {
       return;
     }
@@ -782,9 +788,13 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          party_type: reviewForm.partyType,
+          full_name: reviewForm.fullName,
           passport: reviewForm.passport,
           phone: reviewForm.phone,
           inn: reviewForm.inn,
+          ogrn: reviewForm.ogrn,
+          organization_name: reviewForm.organizationName,
           email: reviewForm.email,
           personal_data_accepted: reviewForm.accepted,
         }),
@@ -1386,12 +1396,65 @@ function App() {
               ) : (
                 <form className="review-form" onSubmit={approveReview} ref={reviewFormRef}>
                   <h2>Данные для подписания</h2>
+                  <div className="party-type-switch" aria-label="Тип стороны">
+                    <button
+                      type="button"
+                      className={reviewForm.partyType === "individual" ? "active" : ""}
+                      onClick={() => setReviewForm((form) => ({ ...form, partyType: "individual" }))}
+                    >
+                      Физлицо
+                    </button>
+                    <button
+                      type="button"
+                      className={reviewForm.partyType === "business" ? "active" : ""}
+                      onClick={() => setReviewForm((form) => ({ ...form, partyType: "business" }))}
+                    >
+                      Организация / ИП
+                    </button>
+                  </div>
+                  {reviewForm.partyType === "business" && (
+                    <input
+                      value={reviewForm.organizationName}
+                      onChange={(event) => setReviewForm((form) => ({ ...form, organizationName: event.target.value }))}
+                      placeholder="Наименование организации или ИП"
+                      required
+                    />
+                  )}
+                  <input
+                    value={reviewForm.fullName}
+                    onChange={(event) => setReviewForm((form) => ({ ...form, fullName: event.target.value }))}
+                    placeholder={reviewForm.partyType === "business" ? "ФИО подписанта" : "Фамилия Имя Отчество"}
+                    required
+                  />
+                  {reviewForm.partyType === "individual" ? (
                   <input
                     value={reviewForm.passport}
                     onChange={(event) => setReviewForm((form) => ({ ...form, passport: event.target.value }))}
-                    placeholder="Серия и номер паспорта"
+                    placeholder="Паспорт: 0000 000000"
+                    inputMode="numeric"
+                    pattern="[0-9]{4} ?[0-9]{6}"
                     required
                   />
+                  ) : (
+                    <>
+                      <input
+                        value={reviewForm.inn}
+                        onChange={(event) => setReviewForm((form) => ({ ...form, inn: event.target.value }))}
+                        placeholder="ИНН"
+                        inputMode="numeric"
+                        pattern="[0-9]{10}|[0-9]{12}"
+                        required
+                      />
+                      <input
+                        value={reviewForm.ogrn}
+                        onChange={(event) => setReviewForm((form) => ({ ...form, ogrn: event.target.value }))}
+                        placeholder="ОГРН или ОГРНИП"
+                        inputMode="numeric"
+                        pattern="[0-9]{13}|[0-9]{15}"
+                        required
+                      />
+                    </>
+                  )}
                   <input
                     value={reviewForm.phone}
                     onChange={(event) => setReviewForm((form) => ({ ...form, phone: event.target.value }))}
@@ -1404,11 +1467,6 @@ function App() {
                     readOnly
                     aria-readonly="true"
                     required
-                  />
-                  <input
-                    value={reviewForm.inn}
-                    onChange={(event) => setReviewForm((form) => ({ ...form, inn: event.target.value }))}
-                    placeholder="ИНН для ИП/МСП, если применимо"
                   />
                   <label className="checkbox-row">
                     <input

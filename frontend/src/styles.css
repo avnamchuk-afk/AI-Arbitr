@@ -403,6 +403,34 @@ button:hover {
   letter-spacing: 0;
 }
 
+.party-type-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px;
+  background: rgb(232 235 240 / 72%);
+}
+
+.party-type-switch button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: var(--muted);
+  background: transparent;
+  box-shadow: none;
+  font-size: 13px;
+}
+
+.party-type-switch button.active {
+  color: var(--ink);
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(30 45 72 / 10%);
+  font-weight: 700;
+}
+
 .form-hint {
   margin: 0;
   color: var(--muted);
