@@ -594,9 +594,12 @@ function App() {
   const [reviewNotice, setReviewNotice] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewFormOpen, setReviewFormOpen] = useState(false);
+  const [reviewConfirmation, setReviewConfirmation] = useState(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [inviteSending, setInviteSending] = useState(false);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const messagesEndRef = useRef(null);
+  const reviewFormRef = useRef(null);
   const gestureRef = useRef({ x: 0, y: 0 });
 
   const reviewToken = getReviewTokenFromPath();
@@ -646,6 +649,11 @@ function App() {
     if (!reviewToken) return;
     loadReview(reviewToken);
   }, [reviewToken]);
+
+  useEffect(() => {
+    if (!reviewFormOpen) return;
+    window.requestAnimationFrame(() => reviewFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [reviewFormOpen]);
 
   useEffect(() => {
     localStorage.setItem("ai-arbitr-draft", draft);
@@ -759,7 +767,7 @@ function App() {
 
   async function approveReview(event) {
     event.preventDefault();
-    if (!reviewToken) return;
+    if (!reviewToken || reviewSubmitting) return;
     setReviewNotice("");
     const demoDataLeft = reviewForm.passport.trim() === DEMO_REVIEW_PASSPORT;
     if (
@@ -768,28 +776,38 @@ function App() {
     ) {
       return;
     }
-    const response = await fetch(`${API_URL}/review/${reviewToken}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        passport: reviewForm.passport,
-        phone: reviewForm.phone,
-        inn: reviewForm.inn,
-        email: reviewForm.email,
-        personal_data_accepted: reviewForm.accepted,
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setReviewNotice(data.detail || "Не удалось подтвердить согласие");
-      return;
+    setReviewSubmitting(true);
+    try {
+      const response = await fetch(`${API_URL}/review/${reviewToken}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          passport: reviewForm.passport,
+          phone: reviewForm.phone,
+          inn: reviewForm.inn,
+          email: reviewForm.email,
+          personal_data_accepted: reviewForm.accepted,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setReviewNotice(data.detail || "Не удалось подписать договор");
+        reviewFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      const confirmation = `Вы подписали договор. Он направлен на подписание первой стороне: ${data.owner_email || "адрес первой стороны"}. После подписания первой стороной вам придет уведомление о заключении договора.`;
+      setReviewNotice("");
+      setReviewConfirmation({ title: "Договор подписан", message: confirmation });
+      setReviewData((current) => ({
+        ...current,
+        finalized: Boolean(data.finalized),
+        approved: true,
+      }));
+    } catch {
+      setReviewNotice("Не удалось подписать договор. Проверьте подключение и попробуйте еще раз.");
+    } finally {
+      setReviewSubmitting(false);
     }
-    setReviewNotice("Подпись зафиксирована. Первая сторона получила уведомление и должна подписать договор со своей стороны.");
-    setReviewData((current) => ({
-      ...current,
-      finalized: Boolean(data.finalized),
-      approved: true,
-    }));
   }
 
   async function loadSession(sessionId) {
@@ -1321,6 +1339,17 @@ function App() {
   if (reviewToken) {
     return (
       <main className="review-page">
+        {reviewConfirmation && (
+          <div className="invite-confirmation" role="status" aria-live="polite">
+            <div>
+              <strong>{reviewConfirmation.title}</strong>
+              <p>{reviewConfirmation.message}</p>
+            </div>
+            <button type="button" onClick={() => setReviewConfirmation(null)} aria-label="Закрыть уведомление">
+              ×
+            </button>
+          </div>
+        )}
         <section className="review-shell">
           <header className="review-header">
             <LogoMark compact />
@@ -1341,11 +1370,21 @@ function App() {
                   <Check size={18} /> Подпись уже зафиксирована.
                 </div>
               ) : !reviewFormOpen ? (
-                <button className="review-agree-button" type="button" onClick={() => setReviewFormOpen(true)}>
-                  <Check size={17} /> Согласовать
+                <button
+                  className="review-agree-button"
+                  type="button"
+                  onClick={() => {
+                    setReviewFormOpen(true);
+                    setReviewConfirmation({
+                      title: "Данные для подписания",
+                      message: "Заполните реквизиты и подтвердите согласие на обработку персональных данных.",
+                    });
+                  }}
+                >
+                  <Check size={17} /> Подписать
                 </button>
               ) : (
-                <form className="review-form" onSubmit={approveReview}>
+                <form className="review-form" onSubmit={approveReview} ref={reviewFormRef}>
                   <h2>Данные для подписания</h2>
                   <input
                     value={reviewForm.passport}
@@ -1376,11 +1415,12 @@ function App() {
                       type="checkbox"
                       checked={reviewForm.accepted}
                       onChange={(event) => setReviewForm((form) => ({ ...form, accepted: event.target.checked }))}
+                      required
                     />
                     <span>Я согласен на обработку персональных данных</span>
                   </label>
-                  <button>
-                    <Check size={16} /> Подписать
+                  <button disabled={reviewSubmitting}>
+                    <Check size={16} /> {reviewSubmitting ? "Подписываю..." : "Подписать"}
                   </button>
                 </form>
               )}

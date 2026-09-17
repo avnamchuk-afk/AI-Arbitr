@@ -2072,8 +2072,9 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
     latest_version = get_latest_version(db, session)
     if latest_version is None:
         raise HTTPException(status_code=400, detail="Нет версии договора для согласования")
+    owner = db.get(User, session.owner_user_id)
     if session.status == SessionStatus.finalized:
-        return {"finalized": True}
+        return {"finalized": True, "owner_email": owner.email if owner else None}
 
     participant = (
         db.query(ContractParticipant)
@@ -2081,7 +2082,11 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
         .one()
     )
     if participant.approval_status == ApprovalStatus.approved:
-        return {"finalized": False, "party_two_signed": True}
+        return {
+            "finalized": False,
+            "party_two_signed": True,
+            "owner_email": owner.email if owner else None,
+        }
     invited_email = participant.user.email if participant.user else ""
     if not invited_email or str(payload.email).lower() != invited_email.lower():
         raise HTTPException(status_code=403, detail="Подписать договор можно только с email, на который направлено приглашение")
@@ -2107,7 +2112,6 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
             ),
         )
     )
-    owner = db.get(User, session.owner_user_id)
     temp_content = apply_ephemeral_party_data(latest_version.content, payload)
     session.pending_signing_content = temp_content
     if owner and not is_guest_user(owner):
@@ -2121,7 +2125,11 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
     )
     upsert_contract_analytics_snapshot(db, session)
     db.commit()
-    return {"finalized": False, "party_two_signed": True}
+    return {
+        "finalized": False,
+        "party_two_signed": True,
+        "owner_email": owner.email if owner else None,
+    }
 
 
 @app.post("/sessions/{session_id}/messages")
