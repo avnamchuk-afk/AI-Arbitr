@@ -1,13 +1,10 @@
 import uuid
 import re
-import ipaddress
-import json
 import hashlib
 from types import SimpleNamespace
 from io import BytesIO
 from datetime import datetime, time, timedelta, timezone
 from urllib.parse import urlencode
-from urllib.request import urlopen
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,7 +38,6 @@ from app.services.auth import (
     make_session_cookie,
     make_verified_ip_cookie,
     read_session_cookie,
-    read_verified_ip_cookie,
     token_expires_at,
 )
 from app.services.contract_templates import AI_ARBITR_DISPUTE_SECTION, build_housing_rent_contract, build_website_development_contract
@@ -152,7 +148,6 @@ class ReviewApproveRequest(BaseModel):
 
 GUEST_EMAIL_SUFFIX = "@guest.ai-arbitr.local"
 VERIFIED_IP_COOKIE_NAME = "ai_arbitr_verified_ip"
-VPN_CHECK_CACHE: dict[str, tuple[datetime, bool]] = {}
 DAILY_ACTION_LIMIT = 100
 DEMO_SESSION_TITLE = "пример"
 LEGACY_DEMO_SESSION_TITLE = "Пример: договор на лендинг"
@@ -1386,47 +1381,6 @@ def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
-def is_public_ip(ip_address: str) -> bool:
-    try:
-        parsed_ip = ipaddress.ip_address(ip_address)
-    except ValueError:
-        return False
-    return not (
-        parsed_ip.is_private
-        or parsed_ip.is_loopback
-        or parsed_ip.is_link_local
-        or parsed_ip.is_multicast
-        or parsed_ip.is_reserved
-        or parsed_ip.is_unspecified
-    )
-
-
-def looks_like_vpn_or_hosting_ip(ip_address: str) -> bool:
-    if not is_public_ip(ip_address):
-        return False
-
-    cached = VPN_CHECK_CACHE.get(ip_address)
-    if cached and (now_utc() - cached[0]).total_seconds() < 60 * 60:
-        return cached[1]
-
-    suspicious = False
-    try:
-        fields = "status,message,proxy,hosting,query"
-        with urlopen(f"http://ip-api.com/json/{ip_address}?fields={fields}", timeout=1.5) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        suspicious = data.get("status") == "success" and bool(data.get("proxy") or data.get("hosting"))
-    except Exception:
-        suspicious = False
-
-    VPN_CHECK_CACHE[ip_address] = (now_utc(), suspicious)
-    return suspicious
-
-
-def verified_ip_matches(cookie_value: str | None, user: User, ip_address: str) -> bool:
-    data = read_verified_ip_cookie(cookie_value)
-    return bool(data and data["user_id"] == str(user.id) and data["ip"] == ip_address)
-
-
 def rate_limit_subject(request: Request, user: User | None = None, email: str = "") -> str:
     if user is not None and not is_guest_user(user):
         return f"user:{user.id}"
@@ -1625,40 +1579,8 @@ def verify_magic_link(token: str, request: Request, db: Session = Depends(get_db
 
 @app.get("/auth/me")
 def auth_me(
-    request: Request,
-    response: Response,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-    verified_ip_cookie: str | None = Cookie(default=None, alias=VERIFIED_IP_COOKIE_NAME),
 ):
-    if not is_guest_user(user):
-        client_ip = get_client_ip(request)
-        if looks_like_vpn_or_hosting_ip(client_ip) and not verified_ip_matches(verified_ip_cookie, user, client_ip):
-            clear_auth_cookie(response)
-            clear_verified_ip_cookie(response)
-            raise HTTPException(
-                status_code=401,
-                detail={
-                    "code": "magic_link_required",
-                    "email": user.email,
-                    "message": "Вход из новой или защищенной сети. Подтвердите email по ссылке из письма.",
-                },
-            )
-        user.trusted_login_count = (user.trusted_login_count or 0) + 1
-        if user.trusted_login_count >= 10:
-            user.trusted_login_count = 0
-            db.commit()
-            clear_auth_cookie(response)
-            clear_verified_ip_cookie(response)
-            raise HTTPException(
-                status_code=401,
-                detail={
-                    "code": "magic_link_required",
-                    "email": user.email,
-                    "message": "Для безопасности подтвердите вход по ссылке из письма.",
-                },
-            )
-        db.commit()
     return {"id": user.id, "email": "" if is_guest_user(user) else user.email, "is_guest": is_guest_user(user)}
 
 
