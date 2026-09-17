@@ -1625,6 +1625,52 @@ button:hover {
   backdrop-filter: var(--blur);
 }
 
+.invite-confirmation {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 20;
+  display: flex;
+  width: min(440px, calc(100vw - 28px));
+  transform: translateX(-50%);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgb(64 90 138 / 24%);
+  border-radius: 8px;
+  padding: 13px 12px 13px 14px;
+  color: var(--ink);
+  background: rgb(255 255 255 / 96%);
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
+}
+
+.invite-confirmation strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 14px;
+}
+
+.invite-confirmation p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.invite-confirmation button {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  box-shadow: none;
+  font-size: 22px;
+  line-height: 1;
+}
+
 @keyframes pulse {
   0%,
   100% {

@@ -555,6 +555,7 @@ function App() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [contractPreviewOpen, setContractPreviewOpen] = useState(false);
   const [toast, setToast] = useState("");
+  const [inviteConfirmation, setInviteConfirmation] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -658,6 +659,12 @@ function App() {
     const timer = window.setTimeout(() => setToast(""), 2200);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    if (!inviteConfirmation) return undefined;
+    const timer = window.setTimeout(() => setInviteConfirmation(""), 9000);
+    return () => window.clearTimeout(timer);
+  }, [inviteConfirmation]);
 
   useEffect(() => {
     if (!authed) return;
@@ -982,6 +989,11 @@ function App() {
             ? `Ссылка отправлена на ${data.sent_to}. Копия письма отправлена на ${data.copy_to || "ваш email"}.`
             : "Ссылка отправлена второй стороне."
         );
+        if (data.sent_to) {
+          setInviteConfirmation(
+            `Получатель: ${data.sent_to}. Попросите вторую сторону проверить почту. Письмо могло попасть в папку «Спам».`
+          );
+        }
       }
       loadSession(currentSession.id);
       loadSessions();
@@ -1039,6 +1051,11 @@ function App() {
           ? `Ссылка отправлена на ${data.sent_to || partyEmail}. Копия письма отправлена на ${data.copy_to || "ваш email"}.`
           : "SMTP пока не настроен. Скопируйте ссылку просмотра и отправьте второй стороне вручную."
       );
+      if (data.sent) {
+        setInviteConfirmation(
+          `Получатель: ${data.sent_to || partyEmail}. Попросите вторую сторону проверить почту. Письмо могло попасть в папку «Спам».`
+        );
+      }
       loadSession(currentSession.id);
       loadSessions();
     } finally {
@@ -1814,6 +1831,17 @@ function App() {
       </aside>
       <section className="chat-area">
         {toast && <div className="toast">{toast}</div>}
+        {inviteConfirmation && (
+          <div className="invite-confirmation" role="status" aria-live="polite">
+            <div>
+              <strong>Ссылка направлена</strong>
+              <p>{inviteConfirmation}</p>
+            </div>
+            <button type="button" onClick={() => setInviteConfirmation("")} aria-label="Закрыть уведомление">
+              ×
+            </button>
+          </div>
+        )}
         {!currentSession ? (
           <div className="empty-state">
             <LogoMark onClick={() => setAboutOpen(true)} />
