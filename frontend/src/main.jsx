@@ -61,6 +61,7 @@ const PRIVACY_SECTIONS = [
       "2.1. Данные, собираемые автоматически: IP-адрес устройства; информация о браузере; отпечаток браузера; дата и время доступа к Сервису; Session ID; хэш-суммы документов; логи действий пользователя.",
       "2.2. Данные, предоставляемые пользователем добровольно (эфемерная обработка): адрес электронной почты; номер телефона; серия, номер паспорта; ИНН (для ИП, МСП).",
       "2.3. Данные, сохраняемые в системе после заключения договора: UID сторон; хэш адреса электронной почты; маскированные данные; технические логи.",
+      "2.4. Сервис использует строго необходимые cookies для сессии, авторизации, безопасности и восстановления открытого договора. Рекламные cookies не используются.",
       "Важно: указанный объем данных сам по себе не образует пакет данных, позволяющий однозначно идентифицировать личность пользователя без сопоставления с информацией, которой стороны обменялись самостоятельно.",
     ],
   },
@@ -68,6 +69,7 @@ const PRIVACY_SECTIONS = [
     title: "3. Цели обработки персональных данных",
     items: [
       "3.1. Персональные данные обрабатываются для формирования проекта договора, включения реквизитов сторон, однократной отправки финального PDF-документа, фиксации конклюдентных действий как простой электронной подписи и логирования действий для доказательственной базы.",
+      "3.1.1. Указанный пользователем email используется для юридически значимых уведомлений о согласовании, подписании, исполнении договора и споре в соответствии с Правилами сервиса.",
       "3.2. Мы не используем персональные данные для маркетинга, профилирования или внешних проверок через государственные реестры.",
     ],
   },
@@ -120,6 +122,31 @@ const PRIVACY_SECTIONS = [
       "9.1. Мы оставляем за собой право вносить изменения в настоящую Политику. Актуальная версия размещается на Сайте.",
       "9.2. Контактная информация по вопросам обработки персональных данных: privacy@ai-arbitr.ru.",
       "9.3. Политика регулируется законодательством Российской Федерации.",
+    ],
+  },
+];
+
+const TERMS_SECTIONS = [
+  {
+    title: "1. Электронное взаимодействие",
+    items: [
+      "1.1. Пользователь указывает принадлежащий ему адрес электронной почты и признает сообщения AI-Arbitr, направленные на этот адрес, юридически значимыми уведомлениями в рамках работы с договором.",
+      "1.2. Переход по персональной ссылке, согласование версии и нажатие кнопки «Подписать» фиксируются Сервисом как действия пользователя и могут использоваться как простая электронная подпись в согласованном сторонами порядке.",
+      "1.3. Пользователь обязан сохранять доступ к своей почте, не передавать персональные ссылки третьим лицам и своевременно сообщать о компрометации доступа.",
+    ],
+  },
+  {
+    title: "2. Документы и уведомления",
+    items: [
+      "2.1. Проекты, уведомления о подписании, финальный PDF и справка об электронном взаимодействии направляются на указанные сторонами адреса электронной почты.",
+      "2.2. Сообщение считается доставленным после успешной передачи почтовому серверу адресата. Пользователь самостоятельно проверяет папки «Входящие» и «Спам».",
+    ],
+  },
+  {
+    title: "3. Cookies",
+    items: [
+      "3.1. Сервис использует строго необходимые cookies для сохранения сессии, авторизации, безопасности и восстановления открытого договора.",
+      "3.2. Обязательные cookies не используются для рекламного отслеживания. При появлении аналитических или маркетинговых cookies Сервис запросит отдельное согласие.",
     ],
   },
 ];
@@ -494,7 +521,7 @@ function PrivacyPage() {
       <article className="privacy-shell">
         <header className="privacy-header">
           <LogoMark compact />
-          <p>Версия 1.2 от 14 сентября 2026 г.</p>
+          <p>Версия 1.3 от 18 сентября 2026 г.</p>
           <h1>Политика конфиденциальности сервиса Ai-arbitr</h1>
         </header>
         {PRIVACY_SECTIONS.map((section) => (
@@ -506,12 +533,46 @@ function PrivacyPage() {
           </section>
         ))}
         <footer className="privacy-footer">
-          <p>Дата последнего обновления: 14 сентября 2026 г.</p>
+          <p>Дата последнего обновления: 18 сентября 2026 г.</p>
           <strong>Ai-arbitr — конфиденциальность по дизайну.</strong>
           <a href="/">Вернуться в сервис</a>
         </footer>
       </article>
     </main>
+  );
+}
+
+function TermsPage() {
+  return (
+    <main className="privacy-page">
+      <article className="privacy-shell">
+        <header className="privacy-header">
+          <LogoMark compact />
+          <p>Версия 1.0 от 18 сентября 2026 г.</p>
+          <h1>Правила сервиса AI-Arbitr</h1>
+        </header>
+        {TERMS_SECTIONS.map((section) => (
+          <section key={section.title} className="privacy-section">
+            <h2>{section.title}</h2>
+            {section.items.map((item) => <p key={item}>{item}</p>)}
+          </section>
+        ))}
+        <footer className="privacy-footer">
+          <a href="/privacy">Политика конфиденциальности</a>
+          <a href="/">Вернуться в сервис</a>
+        </footer>
+      </article>
+    </main>
+  );
+}
+
+function ConsentText() {
+  return (
+    <span>
+      Принимаю <a href="/terms" target="_blank" rel="noreferrer">Правила сервиса</a>, включая юридически значимые
+      уведомления по email, <a href="/privacy" target="_blank" rel="noreferrer">Политику конфиденциальности</a> и
+      использование обязательных cookies
+    </span>
   );
 }
 
@@ -556,7 +617,10 @@ function App() {
   const [contractPreviewOpen, setContractPreviewOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [inviteConfirmation, setInviteConfirmation] = useState("");
-  const [accepted, setAccepted] = useState(false);
+  const [accepted, setAccepted] = useState(localStorage.getItem("ai-arbitr-consent-version") === "1.0");
+  const [cookieConsentVisible, setCookieConsentVisible] = useState(
+    localStorage.getItem("ai-arbitr-consent-version") !== "1.0"
+  );
   const [authed, setAuthed] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [currentSession, setCurrentSession] = useState(null);
@@ -593,7 +657,7 @@ function App() {
     ogrn: "",
     organizationName: "",
     email: "",
-    accepted: false,
+    accepted: localStorage.getItem("ai-arbitr-consent-version") === "1.0",
   });
   const [reviewNotice, setReviewNotice] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -608,11 +672,12 @@ function App() {
 
   const reviewToken = getReviewTokenFromPath();
   const isPrivacyPath = window.location.pathname === "/privacy";
+  const isTermsPath = window.location.pathname === "/terms";
   const isLandingPath = window.location.pathname === "/landing";
   const isKnowledgePath = window.location.pathname === "/knowledge" || window.location.pathname.startsWith("/knowledge/");
 
   useEffect(() => {
-    if (reviewToken || isPrivacyPath || isLandingPath || isKnowledgePath) {
+    if (reviewToken || isPrivacyPath || isTermsPath || isLandingPath || isKnowledgePath) {
       setAuthReady(true);
       return;
     }
@@ -647,7 +712,34 @@ function App() {
       }
     }
     bootstrapAuth();
-  }, [reviewToken, isPrivacyPath, isLandingPath, isKnowledgePath]);
+  }, [reviewToken, isPrivacyPath, isTermsPath, isLandingPath, isKnowledgePath]);
+
+  async function acceptUnifiedConsent() {
+    localStorage.setItem("ai-arbitr-consent-version", "1.0");
+    setAccepted(true);
+    setReviewForm((form) => ({ ...form, accepted: true }));
+    setCookieConsentVisible(false);
+    if (authed && !reviewToken) {
+      await fetch(`${API_URL}/auth/consent`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          service_rules_accepted: true,
+          privacy_accepted: true,
+          cookies_accepted: true,
+          consent_version: "1.0",
+        }),
+      }).catch(() => undefined);
+    }
+  }
+
+  const consentBanner = cookieConsentVisible && !isPrivacyPath && !isTermsPath && (
+    <aside className="consent-banner" aria-label="Согласие с правилами и cookies">
+      <p><ConsentText /></p>
+      <button type="button" onClick={acceptUnifiedConsent}>Принять и продолжить</button>
+    </aside>
+  );
 
   useEffect(() => {
     if (!reviewToken) return;
@@ -797,6 +889,9 @@ function App() {
           organization_name: reviewForm.organizationName,
           email: reviewForm.email,
           personal_data_accepted: reviewForm.accepted,
+          service_rules_accepted: reviewForm.accepted,
+          cookies_accepted: reviewForm.accepted,
+          consent_version: "1.0",
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -873,8 +968,15 @@ function App() {
         : authMode === "register"
           ? "/auth/register"
           : "/auth/login";
-    const payload =
-      authMode === "register" ? { email, personal_data_accepted: accepted } : { email };
+    const payload = authMode === "register"
+      ? {
+          email,
+          personal_data_accepted: accepted,
+          service_rules_accepted: accepted,
+          cookies_accepted: accepted,
+          consent_version: "1.0",
+        }
+      : { email };
     try {
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
@@ -1324,11 +1426,11 @@ function App() {
     : "Напишите коротко, какой договор нужно составить";
 
   if (isLandingPath) {
-    return <LandingPage />;
+    return <><LandingPage />{consentBanner}</>;
   }
 
   if (isKnowledgePath) {
-    return <KnowledgeBase />;
+    return <><KnowledgeBase />{consentBanner}</>;
   }
 
   if (!authReady) {
@@ -1346,9 +1448,14 @@ function App() {
     return <PrivacyPage />;
   }
 
+  if (isTermsPath) {
+    return <TermsPage />;
+  }
+
   if (reviewToken) {
     return (
       <main className="review-page">
+        {consentBanner}
         {reviewConfirmation && (
           <div className="invite-confirmation" role="status" aria-live="polite">
             <div>
@@ -1475,7 +1582,7 @@ function App() {
                       onChange={(event) => setReviewForm((form) => ({ ...form, accepted: event.target.checked }))}
                       required
                     />
-                    <span>Я согласен на обработку персональных данных</span>
+                    <ConsentText />
                   </label>
                   <button disabled={reviewSubmitting}>
                     <Check size={16} /> {reviewSubmitting ? "Подписываю..." : "Подписать"}
@@ -1492,6 +1599,7 @@ function App() {
   if (!authed) {
     return (
       <main className="login-page">
+        {consentBanner}
         <form className="login-form" onSubmit={login}>
           <h1>AI-Арбитр</h1>
           <div className="auth-switch" role="tablist" aria-label="Регистрация или вход">
@@ -1522,7 +1630,7 @@ function App() {
           {authMode === "register" && (
             <label className="checkbox-row">
               <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
-              <span>Я согласен на обработку персональных данных</span>
+              <ConsentText />
             </label>
           )}
           <button>{authMode === "register" ? "Зарегистрироваться" : "Отправить ссылку для входа"}</button>
@@ -1540,6 +1648,7 @@ function App() {
 
   return (
     <main className="app-shell" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      {consentBanner}
       <div className="mobile-topbar">
         <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
           <Menu size={20} />
@@ -1590,7 +1699,7 @@ function App() {
             <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="email@example.com" />
             <label className="checkbox-row">
               <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
-              <span>Я согласен на обработку персональных данных</span>
+              <ConsentText />
             </label>
             <button disabled={authSubmitting}>
               {authSubmitting

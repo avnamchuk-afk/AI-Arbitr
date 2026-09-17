@@ -1,9 +1,16 @@
 import unittest
 
-from app.main import ReviewApproveRequest, apply_ephemeral_party_data
+from fastapi import HTTPException
+
+from app.main import ReviewApproveRequest, apply_ephemeral_party_data, require_unified_consent
 
 
 class ReviewPartyDataTest(unittest.TestCase):
+    def test_unified_consent_requires_all_parts(self):
+        require_unified_consent(True, True, True)
+        with self.assertRaises(HTTPException):
+            require_unified_consent(True, False, True)
+
     def test_individual_data_replaces_demo_requisites(self):
         payload = ReviewApproveRequest(
             party_type="individual",

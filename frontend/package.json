@@ -1,6 +1,6 @@
 {
   "name": "ai-arbitr-frontend",
-  "version": "0.4.9-beta",
+  "version": "0.5.0-beta",
   "private": true,
   "scripts": {
     "dev": "vite",
