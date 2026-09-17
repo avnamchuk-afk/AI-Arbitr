@@ -783,10 +783,10 @@ def build_key_terms(contract_text: str) -> list[dict[str, str]]:
         deposit_value = f"в размере {deposit_value}"
 
     return [
-        {"label": "Объект", "value": compact_key_term(build_object_summary(contract_text))},
+        {"label": "Объект", "value": compact_key_term(build_object_summary(contract_text), strip_leading_number=False)},
         {"label": "Оплата в месяц", "value": compact_key_term(payment_value, 48, strip_leading_number=False)},
         {"label": "ЖКУ", "value": compact_key_term(utilities_value, 48)},
-        {"label": "Срок", "value": compact_key_term(term_value, 48)},
+        {"label": "Срок", "value": compact_key_term(term_value, 48, strip_leading_number=False)},
         {"label": "Автопролонгация", "value": compact_key_term(prolongation_value, 48)},
         {"label": "Дети", "value": compact_key_term(children_value, 48)},
         {"label": "Животные", "value": compact_key_term(pets_value, 48)},
