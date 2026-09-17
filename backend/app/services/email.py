@@ -8,6 +8,18 @@ def smtp_is_configured() -> bool:
     return bool(settings.smtp_host and settings.smtp_user and settings.smtp_password and settings.smtp_from)
 
 
+def _send_message(message: EmailMessage) -> None:
+    if settings.smtp_port == 465:
+        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as smtp:
+            smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(message)
+    else:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
+            smtp.starttls()
+            smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(message)
+
+
 def send_magic_link(email: str, link: str) -> None:
     if not smtp_is_configured():
         return
@@ -23,15 +35,7 @@ def send_magic_link(email: str, link: str) -> None:
         "Ссылка действует 10 минут. Если вы не запрашивали вход, просто проигнорируйте письмо.\n"
     )
 
-    if settings.smtp_port == 465:
-        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as smtp:
-            smtp.login(settings.smtp_user, settings.smtp_password)
-            smtp.send_message(message)
-    else:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
-            smtp.starttls()
-            smtp.login(settings.smtp_user, settings.smtp_password)
-            smtp.send_message(message)
+    _send_message(message)
 
 
 def send_contract_invite(
@@ -48,24 +52,26 @@ def send_contract_invite(
     message["Subject"] = "Согласование договора в AI-Арбитр"
     message["From"] = settings.smtp_from
     message["To"] = email
-    if copy_to and copy_to != email:
-        message["Cc"] = copy_to
     message.set_content(
         "Здравствуйте!\n\n"
         f"Вам направлен на согласование проект договора: {title}.\n\n"
         f"{link}\n\n"
         + (f"PDF-версия:\n{pdf_link}\n" if pdf_link else "")
     )
+    _send_message(message)
 
-    if settings.smtp_port == 465:
-        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as smtp:
-            smtp.login(settings.smtp_user, settings.smtp_password)
-            smtp.send_message(message)
-    else:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
-            smtp.starttls()
-            smtp.login(settings.smtp_user, settings.smtp_password)
-            smtp.send_message(message)
+    if copy_to and copy_to.lower() != email.lower():
+        confirmation = EmailMessage()
+        confirmation["Subject"] = "Проект договора направлен на согласование"
+        confirmation["From"] = settings.smtp_from
+        confirmation["To"] = copy_to
+        confirmation.set_content(
+            "Здравствуйте!\n\n"
+            f"Вы направили проект договора на согласование: {title}.\n"
+            f"Адрес второй стороны: {email}.\n\n"
+            "Мы сообщим, когда вторая сторона подпишет договор.\n"
+        )
+        _send_message(confirmation)
 
 
 def send_contract_signed_notice(
