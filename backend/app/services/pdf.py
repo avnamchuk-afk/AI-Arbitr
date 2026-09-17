@@ -232,6 +232,11 @@ def build_interaction_certificate_pdf(
         para(f"ID сессии: {session.id}", styles["AIBase"]),
         para(f"Статус: {session.status.value}", styles["AIBase"]),
         para(f"Финальная версия: № {final_version.version_number}, ID {final_version.id}", styles["AIBase"]),
+        para(f"Версия AI-Arbitr: {final_version.app_version or 'legacy'}", styles["AIBase"]),
+        para(
+            f"Шаблон: {final_version.template_id or 'legacy'}, редакция {final_version.template_version or 'не зафиксирована'}",
+            styles["AIBase"],
+        ),
         para(f"Дата финализации: {session.finalized_at or 'не указана'}", styles["AIBase"]),
         para(f"SHA-256 текста финальной версии: {content_hash}", styles["AIBase"]),
         para("Стороны", styles["AIHeading"]),

@@ -50,6 +50,7 @@ from app.services.pdf import build_contract_pdf, build_interaction_certificate_p
 from app.services.privacy import contains_passport_like_data
 from app.services.prompts import CONTRACT_SYSTEM_PROMPT, SIMPLE_CONTRACT_SYSTEM_PROMPT, build_dispute_prompt
 from app.services.yandex_gpt import YandexGPTError, ask_yandex_gpt
+from app.version import APP_VERSION, identify_contract_template
 
 Base.metadata.create_all(bind=engine)
 
@@ -69,6 +70,9 @@ def ensure_runtime_schema() -> None:
             connection.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS final_content_hash VARCHAR(64)"))
             connection.execute(text("ALTER TABLE contract_participants ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ"))
             connection.execute(text("ALTER TABLE contract_participants ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ"))
+            connection.execute(text("ALTER TABLE contract_versions ADD COLUMN IF NOT EXISTS app_version VARCHAR(32)"))
+            connection.execute(text("ALTER TABLE contract_versions ADD COLUMN IF NOT EXISTS template_id VARCHAR(80)"))
+            connection.execute(text("ALTER TABLE contract_versions ADD COLUMN IF NOT EXISTS template_version VARCHAR(32)"))
         elif engine.dialect.name == "sqlite":
             user_columns = connection.execute(text("PRAGMA table_info(users)")).fetchall()
             if not any(column[1] == "trusted_login_count" for column in user_columns):
@@ -88,11 +92,19 @@ def ensure_runtime_schema() -> None:
             for column_name in ("signed_at", "completed_at"):
                 if not any(column[1] == column_name for column in participant_columns):
                     connection.execute(text(f"ALTER TABLE contract_participants ADD COLUMN {column_name} DATETIME"))
+            version_columns = connection.execute(text("PRAGMA table_info(contract_versions)")).fetchall()
+            for column_name, column_type in (
+                ("app_version", "VARCHAR(32)"),
+                ("template_id", "VARCHAR(80)"),
+                ("template_version", "VARCHAR(32)"),
+            ):
+                if not any(column[1] == column_name for column in version_columns):
+                    connection.execute(text(f"ALTER TABLE contract_versions ADD COLUMN {column_name} {column_type}"))
 
 
 ensure_runtime_schema()
 
-app = FastAPI(title="AI-Arbitr API")
+app = FastAPI(title="AI-Arbitr API", version=APP_VERSION)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1271,7 +1283,7 @@ def infer_session_title(content: str) -> str:
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 @app.get("/stats")
@@ -1949,11 +1961,15 @@ def ensure_demo_session(db: Session, user: User) -> None:
             ),
         )
     )
+    demo_template_id, demo_template_version = identify_contract_template(DEMO_CONTRACT_TEXT)
     db.add(
         ContractVersion(
             session_id=session.id,
             version_number=1,
             content=DEMO_CONTRACT_TEXT,
+            app_version=APP_VERSION,
+            template_id=demo_template_id,
+            template_version=demo_template_version,
         )
     )
 
@@ -1963,10 +1979,14 @@ def save_contract_version(db: Session, session: ContractSession, content: str) -
     version_count = db.query(ContractVersion).filter(ContractVersion.session_id == session.id).count()
     version_number = version_count + 1
     content = apply_contract_number(content, version_number)
+    template_id, template_version = identify_contract_template(content)
     version = ContractVersion(
         session_id=session.id,
         version_number=version_number,
         content=content,
+        app_version=APP_VERSION,
+        template_id=template_id,
+        template_version=template_version,
     )
     session.status = SessionStatus.in_review
     for participant in session.participants:

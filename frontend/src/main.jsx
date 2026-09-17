@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import LandingPage from "./LandingPage.jsx";
 import KnowledgeBase from "./KnowledgeBase.jsx";
+import { APP_VERSION } from "./version.js";
 import "./styles.css";
 
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
@@ -1546,6 +1547,7 @@ function App() {
         >
           <section className="help-modal about-modal" onClick={(event) => event.stopPropagation()}>
             <LogoMark compact />
+            <span className="app-version">Версия {APP_VERSION}</span>
             <h1>AI-Arbitr помогает пройти договор до конца</h1>
             <p>
               Это не просто генератор текста. Я веду пользователя по шагам: проект договора,

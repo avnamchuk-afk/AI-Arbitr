@@ -171,6 +171,9 @@ class ContractVersion(Base):
     session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"), index=True)
     version_number: Mapped[int] = mapped_column(Integer)
     content: Mapped[str] = mapped_column(Text)
+    app_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    template_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    template_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     is_final: Mapped[bool] = mapped_column(Boolean, default=False)
 

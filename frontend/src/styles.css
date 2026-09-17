@@ -717,6 +717,16 @@ button:hover {
   width: min(720px, 100%);
 }
 
+.app-version {
+  width: fit-content;
+  padding: 3px 7px;
+  border: 1px solid rgb(64 90 138 / 22%);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .about-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
