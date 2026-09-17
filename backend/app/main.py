@@ -1480,20 +1480,22 @@ def is_guest_user(user: User) -> bool:
     return user.email.endswith(GUEST_EMAIL_SUFFIX)
 
 
-def apply_user_consent(user: User, version: str = CONSENT_VERSION) -> None:
+def apply_user_consent(user: User) -> None:
     user.service_rules_accepted = True
     user.privacy_accepted = True
     user.cookies_accepted = True
-    user.consent_version = version
+    user.consent_version = CONSENT_VERSION
     user.consented_at = now_utc()
 
 
-def require_unified_consent(personal_data: bool, service_rules: bool, cookies: bool) -> None:
+def require_unified_consent(personal_data: bool, service_rules: bool, cookies: bool, version: str) -> None:
     if not (personal_data and service_rules and cookies):
         raise HTTPException(
             status_code=400,
             detail="Нужно принять Правила сервиса, Политику конфиденциальности и использование обязательных cookies",
         )
+    if version != CONSENT_VERSION:
+        raise HTTPException(status_code=409, detail="Правила сервиса обновлены. Обновите страницу и примите новую редакцию")
 
 
 @app.post("/auth/consent")
@@ -1506,8 +1508,9 @@ def save_consent(
         payload.privacy_accepted,
         payload.service_rules_accepted,
         payload.cookies_accepted,
+        payload.consent_version,
     )
-    apply_user_consent(user, payload.consent_version)
+    apply_user_consent(user)
     db.commit()
     return {"accepted": True, "consent_version": user.consent_version}
 
@@ -1555,6 +1558,7 @@ def register(
         payload.personal_data_accepted,
         payload.service_rules_accepted,
         payload.cookies_accepted,
+        payload.consent_version,
     )
 
     existing_user = db.query(User).filter(User.email == payload.email).one_or_none()
@@ -1563,15 +1567,15 @@ def register(
 
     if current_user is not None and is_guest_user(current_user):
         current_user.email = payload.email
-        apply_user_consent(current_user, payload.consent_version)
+        apply_user_consent(current_user)
         db.flush()
     elif existing_user is None:
         new_user = User(email=payload.email)
-        apply_user_consent(new_user, payload.consent_version)
+        apply_user_consent(new_user)
         db.add(new_user)
         db.flush()
     elif existing_user is not None:
-        apply_user_consent(existing_user, payload.consent_version)
+        apply_user_consent(existing_user)
     return issue_magic_link(payload.email, request, db)
 
 
@@ -1586,6 +1590,7 @@ def quick_register_guest(
         payload.personal_data_accepted,
         payload.service_rules_accepted,
         payload.cookies_accepted,
+        payload.consent_version,
     )
     if not is_guest_user(current_user):
         return {"id": current_user.id, "email": current_user.email, "is_guest": False}
@@ -1595,7 +1600,7 @@ def quick_register_guest(
         raise HTTPException(status_code=409, detail="Аккаунт с таким email уже есть. Войдите по ссылке из письма.")
 
     current_user.email = payload.email
-    apply_user_consent(current_user, payload.consent_version)
+    apply_user_consent(current_user)
     current_user.trusted_login_count = 0
     db.flush()
     db.commit()
@@ -1624,6 +1629,7 @@ def request_magic_link(payload: RegisterRequest, request: Request, db: Session =
         payload.personal_data_accepted,
         payload.service_rules_accepted,
         payload.cookies_accepted,
+        payload.consent_version,
     )
 
     user = db.query(User).filter(User.email == payload.email).one_or_none()
@@ -1631,7 +1637,7 @@ def request_magic_link(payload: RegisterRequest, request: Request, db: Session =
         user = User(email=payload.email)
         db.add(user)
         db.flush()
-    apply_user_consent(user, payload.consent_version)
+    apply_user_consent(user)
 
     return issue_magic_link(payload.email, request, db)
 
@@ -1665,7 +1671,14 @@ def verify_magic_link(token: str, request: Request, db: Session = Depends(get_db
 def auth_me(
     user: User = Depends(get_current_user),
 ):
-    return {"id": user.id, "email": "" if is_guest_user(user) else user.email, "is_guest": is_guest_user(user)}
+    return {
+        "id": user.id,
+        "email": "" if is_guest_user(user) else user.email,
+        "is_guest": is_guest_user(user),
+        "consent_version": user.consent_version,
+        "required_consent_version": CONSENT_VERSION,
+        "consent_required": user.consent_version != CONSENT_VERSION,
+    }
 
 
 @app.post("/auth/logout")
@@ -2153,6 +2166,7 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
         payload.personal_data_accepted,
         payload.service_rules_accepted,
         payload.cookies_accepted,
+        payload.consent_version,
     )
     if payload.party_type not in {"individual", "business"}:
         raise HTTPException(status_code=400, detail="Выберите тип стороны")
@@ -2198,7 +2212,7 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
         user = User(email=payload.email)
         db.add(user)
         db.flush()
-    apply_user_consent(user, payload.consent_version)
+    apply_user_consent(user)
 
     participant.user_id = user.id
     participant.joined_at = participant.joined_at or now_utc()

@@ -7,9 +7,11 @@ from app.main import ReviewApproveRequest, apply_ephemeral_party_data, require_u
 
 class ReviewPartyDataTest(unittest.TestCase):
     def test_unified_consent_requires_all_parts(self):
-        require_unified_consent(True, True, True)
+        require_unified_consent(True, True, True, "1.0")
         with self.assertRaises(HTTPException):
-            require_unified_consent(True, False, True)
+            require_unified_consent(True, False, True, "1.0")
+        with self.assertRaises(HTTPException):
+            require_unified_consent(True, True, True, "0.9")
 
     def test_individual_data_replaces_demo_requisites(self):
         payload = ReviewApproveRequest(

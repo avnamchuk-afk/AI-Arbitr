@@ -41,6 +41,7 @@ const MIN_REGULAR_THINKING_MS = 1500;
 const DEMO_REVIEW_PASSPORT = "1111 111111";
 const DEFAULT_AI_MODEL = "qwen";
 const LAST_SESSION_KEY = "ai-arbitr-current-session";
+const CONSENT_VERSION = "1.0";
 const sessionModeKey = (sessionId) => `ai-arbitr-chat-mode:${sessionId}`;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -617,9 +618,10 @@ function App() {
   const [contractPreviewOpen, setContractPreviewOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [inviteConfirmation, setInviteConfirmation] = useState("");
-  const [accepted, setAccepted] = useState(localStorage.getItem("ai-arbitr-consent-version") === "1.0");
+  const storedConsentVersion = localStorage.getItem("ai-arbitr-consent-version");
+  const [accepted, setAccepted] = useState(storedConsentVersion === CONSENT_VERSION);
   const [cookieConsentVisible, setCookieConsentVisible] = useState(
-    localStorage.getItem("ai-arbitr-consent-version") !== "1.0"
+    storedConsentVersion !== CONSENT_VERSION
   );
   const [authed, setAuthed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -657,7 +659,7 @@ function App() {
     ogrn: "",
     organizationName: "",
     email: "",
-    accepted: localStorage.getItem("ai-arbitr-consent-version") === "1.0",
+    accepted: storedConsentVersion === CONSENT_VERSION,
   });
   const [reviewNotice, setReviewNotice] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -686,6 +688,10 @@ function App() {
         const response = await fetch(`${API_URL}/auth/me`, { credentials: "include" });
         const data = await response.json().catch(() => ({}));
         if (response.ok) {
+          if (data.consent_required || data.consent_version !== CONSENT_VERSION) {
+            setAccepted(false);
+            setCookieConsentVisible(true);
+          }
           setEmail(data.email);
           setUserId(data.id);
           setIsGuest(Boolean(data.is_guest));
@@ -715,7 +721,7 @@ function App() {
   }, [reviewToken, isPrivacyPath, isTermsPath, isLandingPath, isKnowledgePath]);
 
   async function acceptUnifiedConsent() {
-    localStorage.setItem("ai-arbitr-consent-version", "1.0");
+    localStorage.setItem("ai-arbitr-consent-version", CONSENT_VERSION);
     setAccepted(true);
     setReviewForm((form) => ({ ...form, accepted: true }));
     setCookieConsentVisible(false);
@@ -728,17 +734,22 @@ function App() {
           service_rules_accepted: true,
           privacy_accepted: true,
           cookies_accepted: true,
-          consent_version: "1.0",
+          consent_version: CONSENT_VERSION,
         }),
       }).catch(() => undefined);
     }
   }
 
   const consentBanner = cookieConsentVisible && !isPrivacyPath && !isTermsPath && (
-    <aside className="consent-banner" aria-label="Согласие с правилами и cookies">
-      <p><ConsentText /></p>
+    <div className="consent-gate" role="dialog" aria-modal="true" aria-label="Согласие с правилами и cookies">
+    <aside className="consent-banner">
+      <div>
+        <strong>{storedConsentVersion ? "Правила обновлены" : "Перед началом работы"}</strong>
+        <p><ConsentText /></p>
+      </div>
       <button type="button" onClick={acceptUnifiedConsent}>Принять и продолжить</button>
     </aside>
+    </div>
   );
 
   useEffect(() => {
@@ -891,7 +902,7 @@ function App() {
           personal_data_accepted: reviewForm.accepted,
           service_rules_accepted: reviewForm.accepted,
           cookies_accepted: reviewForm.accepted,
-          consent_version: "1.0",
+          consent_version: CONSENT_VERSION,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -974,7 +985,7 @@ function App() {
           personal_data_accepted: accepted,
           service_rules_accepted: accepted,
           cookies_accepted: accepted,
-          consent_version: "1.0",
+          consent_version: CONSENT_VERSION,
         }
       : { email };
     try {

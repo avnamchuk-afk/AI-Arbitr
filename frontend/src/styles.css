@@ -52,6 +52,14 @@ button:hover {
   transform: translateY(-1px);
 }
 
+.consent-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  background: rgb(23 34 47 / 36%);
+  backdrop-filter: blur(3px);
+}
+
 .consent-banner {
   position: fixed;
   right: 14px;
@@ -70,6 +78,13 @@ button:hover {
   background: rgb(255 255 255 / 97%);
   box-shadow: 0 14px 38px rgb(23 34 47 / 18%);
   backdrop-filter: var(--blur);
+}
+
+.consent-banner strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-size: 14px;
 }
 
 .consent-banner p {
