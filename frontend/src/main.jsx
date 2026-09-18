@@ -694,6 +694,7 @@ function App() {
   const messagesEndRef = useRef(null);
   const reviewFormRef = useRef(null);
   const ownerFormRef = useRef(null);
+  const agreementRef = useRef(null);
   const gestureRef = useRef({ x: 0, y: 0 });
 
   const reviewToken = getReviewTokenFromPath();
@@ -849,7 +850,15 @@ function App() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, thinking, appNotice, sessionDetail?.latest_version?.id]);
+  }, [messages, thinking, appNotice, chatMode, questionResolved, ownerSigningOpen, sessionDetail?.latest_version?.id]);
+
+  useEffect(() => {
+    if (chatMode !== "agree") return;
+    window.requestAnimationFrame(() => {
+      agreementRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      agreementRef.current?.querySelector("select")?.focus({ preventScroll: true });
+    });
+  }, [chatMode]);
 
   function getReviewTokenFromPath() {
     const match = window.location.pathname.match(/^\/review\/([^/]+)$/);
@@ -1313,7 +1322,7 @@ function App() {
   }
 
   function startAgreement() {
-    setAppNotice("Проверьте карточку условий и введите email второй стороны.");
+    setAppNotice("");
     setChatMode("agree");
     if (currentSession) localStorage.setItem(sessionModeKey(currentSession.id), "agree");
     setQuestionResolved(false);
@@ -2182,7 +2191,6 @@ function App() {
         ) : (
           <div className={isEmptySession ? "session-stage start-session" : "session-stage active-session"}>
             <div className="chat-thread">
-              {appNotice && <div className="app-notice">{appNotice}</div>}
               <div className="messages">
                 {messages.map((message, index) => {
                   const historyEvent = getHistoryEvent(message);
@@ -2291,11 +2299,10 @@ function App() {
                         <p>Опишите условие, которое нужно добавить. Я предложу редакцию пункта.</p>
                       </div>
                     ) : chatMode === "agree" ? (
-                      <div className="quick-flow">
-                        <strong>Если все понятно и вопросов нет, сохраняю версию.</strong>
+                      <div className="quick-flow" ref={agreementRef}>
+                        <strong>Переходим к согласованию.</strong>
                         <p>
-                          Введите данные второй стороны и email. На него будет направлена ссылка для просмотра
-                          договора и подтверждения согласия без регистрации.
+                          Сначала укажите, кем вы выступаете в договоре. Затем введите email контрагента.
                         </p>
                         <div className="agreement-steps" aria-label="Порядок отправки на согласование">
                           <div className={isGuest ? "agreement-step active" : "agreement-step done"}>
@@ -2313,7 +2320,6 @@ function App() {
                             </div>
                           </div>
                         </div>
-                        <KeyTermsCard terms={sessionDetail?.key_terms} onTermClick={showCurrentContract} />
                         <div className="party-form">
                           <p className="form-hint">
                             В договоре сейчас стоят игровые данные сторон для удобного чтения.
@@ -2332,6 +2338,11 @@ function App() {
                               ))}
                             </select>
                           </label>
+                          {creatorLegalRole && (
+                            <p className="form-hint">
+                              Вы: {creatorLegalRole}. Контрагент: {getLegalRoleOptions(currentSession, sessionDetail).find((role) => role !== creatorLegalRole)}.
+                            </p>
+                          )}
                           <input
                             value={partyEmail}
                             onChange={(event) => setPartyEmail(event.target.value)}
@@ -2397,6 +2408,7 @@ function App() {
                     )}
                   </section>
                 )}
+                {appNotice && <div className="app-notice" role="status" aria-live="polite">{appNotice}</div>}
                 <div ref={messagesEndRef} />
               </div>
             </div>
