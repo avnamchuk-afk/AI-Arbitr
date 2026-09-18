@@ -1,14 +1,16 @@
 from io import BytesIO
 import hashlib
 import re
+from datetime import timedelta, timezone
 from pathlib import Path
 
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Flowable, Paragraph, SimpleDocTemplate, Spacer
 
 from app.models.entities import ContractSession, ContractVersion, Message, ContractParticipant
 
@@ -18,6 +20,8 @@ FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
 ]
+STAMP_BLUE = colors.HexColor("#2457A6")
+MOSCOW_TZ = timezone(timedelta(hours=3))
 
 
 def get_pdf_font_name() -> str:
@@ -64,6 +68,63 @@ def extract_contract_title(contract_text: str, fallback: str) -> str:
     if not first_line:
         return fallback or "Договор"
     return re.sub(r"\s*№\s*\S+.*$", "", first_line, count=1).title()
+
+
+def format_document_time(value) -> str:
+    if not value:
+        return "дата не указана"
+    aware = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return aware.astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M МСК")
+
+
+def draw_page_header(canvas, doc, session, final_version, font_name: str) -> None:
+    canvas.saveState()
+    width, height = A4
+    canvas.setStrokeColor(colors.HexColor("#CBD5E1"))
+    canvas.setLineWidth(0.5)
+    canvas.line(doc.leftMargin, height - 13 * mm, width - doc.rightMargin, height - 13 * mm)
+    canvas.setFillColor(colors.HexColor("#475569"))
+    canvas.setFont(font_name, 7.5)
+    canvas.drawString(doc.leftMargin, height - 10 * mm, f"AI-Arbitr · {format_document_time(session.finalized_at)}")
+    canvas.drawRightString(
+        width - doc.rightMargin,
+        height - 10 * mm,
+        f"Версия № {final_version.version_number} · стр. {doc.page}",
+    )
+    canvas.restoreState()
+
+
+class VerificationStamp(Flowable):
+    def __init__(self, session: ContractSession, font_name: str):
+        super().__init__()
+        self.width = 82 * mm
+        self.height = 29 * mm
+        self.session = session
+        self.font_name = font_name
+        self.hAlign = "CENTER"
+
+    def draw(self):
+        canvas = self.canv
+        canvas.saveState()
+        canvas.setStrokeColor(STAMP_BLUE)
+        canvas.setFillColor(colors.white)
+        canvas.setLineWidth(1.2)
+        canvas.roundRect(0, 0, self.width, self.height, 3 * mm, stroke=1, fill=1)
+        canvas.setLineWidth(0.45)
+        canvas.roundRect(2 * mm, 2 * mm, self.width - 4 * mm, self.height - 4 * mm, 2 * mm, stroke=1, fill=0)
+        canvas.setFillColor(STAMP_BLUE)
+        canvas.setFont(self.font_name, 12)
+        canvas.drawCentredString(self.width / 2, self.height - 8 * mm, "AI-ARBITR")
+        canvas.setFont(self.font_name, 8)
+        canvas.drawCentredString(self.width / 2, self.height - 13 * mm, "ДОКУМЕНТ ПОДПИСАН")
+        canvas.drawCentredString(self.width / 2, self.height - 18 * mm, "ПРОСТАЯ ЭЛЕКТРОННАЯ ПОДПИСЬ")
+        canvas.setFont(self.font_name, 6.5)
+        canvas.drawCentredString(
+            self.width / 2,
+            4.2 * mm,
+            f"{format_document_time(self.session.finalized_at)} · ID {str(self.session.id)[:8]}",
+        )
+        canvas.restoreState()
 
 
 def mask_email(email: str) -> str:
@@ -143,7 +204,7 @@ def build_contract_pdf(
         pagesize=A4,
         rightMargin=18 * mm,
         leftMargin=18 * mm,
-        topMargin=18 * mm,
+        topMargin=20 * mm,
         bottomMargin=18 * mm,
         title="AI-Arbitr - договор",
     )
@@ -157,9 +218,12 @@ def build_contract_pdf(
             "от 06.04.2011 № 63-ФЗ «Об электронной подписи».",
             styles["AIBase"],
         ),
+        Spacer(1, 8),
+        VerificationStamp(session, font_name),
     ]
 
-    doc.build(story)
+    header = lambda canvas, current_doc: draw_page_header(canvas, current_doc, session, final_version, font_name)
+    doc.build(story, onFirstPage=header, onLaterPages=header)
     return buffer.getvalue()
 
 
@@ -209,7 +273,7 @@ def build_interaction_certificate_pdf(
         pagesize=A4,
         rightMargin=18 * mm,
         leftMargin=18 * mm,
-        topMargin=18 * mm,
+        topMargin=20 * mm,
         bottomMargin=18 * mm,
         title="AI-Арбитр - справка электронного взаимодействия",
     )
@@ -243,8 +307,11 @@ def build_interaction_certificate_pdf(
             para(f"ID договора: {session.id}", styles["AIBase"]),
             para(f"SHA-256 финального текста: {content_hash}", styles["AIBase"]),
             para("Способ подписания: простая электронная подпись через подтвержденные адреса электронной почты.", styles["AIBase"]),
+            Spacer(1, 10),
+            VerificationStamp(session, font_name),
         ]
     )
 
-    doc.build(story)
+    header = lambda canvas, current_doc: draw_page_header(canvas, current_doc, session, final_version, font_name)
+    doc.build(story, onFirstPage=header, onLaterPages=header)
     return buffer.getvalue()

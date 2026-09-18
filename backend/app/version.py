@@ -1,4 +1,4 @@
-APP_VERSION = "0.5.5-beta"
+APP_VERSION = "0.5.6-beta"
 
 HOUSING_RENT_TEMPLATE_ID = "housing-rent-ru"
 HOUSING_RENT_TEMPLATE_VERSION = "1.0"
