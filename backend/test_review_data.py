@@ -24,15 +24,34 @@ class ReviewPartyDataTest(unittest.TestCase):
         )
 
         result = apply_ephemeral_party_data(
-            "Наниматель Иванов Иван Иванович, паспорт 1111 111111.",
+            "Гражданин РФ Иванов Иван Иванович, паспорт серии 1111 № 111111, именуемый в дальнейшем «Наниматель».",
             payload,
         )
 
         self.assertIn("Сидоров Сергей Сергеевич", result)
-        self.assertIn("1234 567890", result)
+        self.assertIn("паспорт серии 1234 № 567890", result)
         self.assertIn("+7 999 123-45-67", result)
         self.assertIn("party2@example.org", result)
         self.assertNotIn("Иванов Иван Иванович", result)
+
+    def test_owner_data_replaces_landlord_requisites_only(self):
+        payload = ReviewApproveRequest(
+            party_type="individual",
+            full_name="Новый Наймодатель",
+            passport="9876 543210",
+            phone="+7 999 000-00-00",
+            email="owner@example.org",
+            personal_data_accepted=True,
+        )
+        contract = (
+            "Гражданин РФ Старый Наймодатель, паспорт серии 1111 № 111111, именуемый в дальнейшем «Наймодатель».\n"
+            "Гражданин РФ Старый Наниматель, паспорт серии 2222 № 222222, именуемый в дальнейшем «Наниматель»."
+        )
+
+        result = apply_ephemeral_party_data(contract, payload, participant_role="party_1")
+
+        self.assertIn("Гражданин РФ Новый Наймодатель, паспорт серии 9876 № 543210", result)
+        self.assertIn("Гражданин РФ Старый Наниматель, паспорт серии 2222 № 222222", result)
 
     def test_business_data_is_added_to_contract(self):
         payload = ReviewApproveRequest(

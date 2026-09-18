@@ -1026,10 +1026,35 @@ def mask_tail(value: str, visible_tail: int = 2) -> str:
     return "*" * (len(compact) - visible_tail) + compact[-visible_tail:]
 
 
-def apply_ephemeral_party_data(contract_text: str, payload: ReviewApproveRequest) -> str:
-    updated = contract_text.replace("Иванов Иван Иванович", payload.full_name)
-    if payload.passport:
-        updated = updated.replace("1111 111111", payload.passport)
+def apply_ephemeral_party_data(
+    contract_text: str,
+    payload: ReviewApproveRequest,
+    participant_role: ParticipantRole = ParticipantRole.party_2,
+) -> str:
+    updated = contract_text
+    legal_role = "Наниматель" if participant_role == ParticipantRole.party_2 else "Наймодатель"
+    passport_digits = re.sub(r"\D", "", payload.passport)
+    lines = updated.splitlines()
+    replaced_requisites = False
+    for index, line in enumerate(lines):
+        if f"«{legal_role}»" not in line:
+            continue
+        lines[index] = re.sub(r"Гражданин РФ\s+[^,]+", f"Гражданин РФ {payload.full_name}", line, count=1)
+        if len(passport_digits) == 10:
+            lines[index] = re.sub(
+                r"паспорт серии\s*\d{4}\s*№\s*\d{6}",
+                f"паспорт серии {passport_digits[:4]} № {passport_digits[4:]}",
+                lines[index],
+                count=1,
+            )
+        replaced_requisites = True
+        break
+    updated = "\n".join(lines)
+    if not replaced_requisites and payload.party_type == "individual":
+        updated += (
+            f"\n\nРеквизиты {'Стороны 2' if participant_role == ParticipantRole.party_2 else 'Стороны 1'}:\n"
+            f"ФИО: {payload.full_name}\nПаспорт: {payload.passport}"
+        )
     if payload.party_type == "business":
         details = [
             f"Организация / ИП: {payload.organization_name}",
@@ -1037,13 +1062,15 @@ def apply_ephemeral_party_data(contract_text: str, payload: ReviewApproveRequest
             f"ИНН: {payload.inn}",
             f"ОГРН / ОГРНИП: {payload.ogrn}",
         ]
-        updated += "\n\nРеквизиты Стороны 2:\n" + "\n".join(details)
-    if payload.phone and "телефон" not in updated.lower():
-        updated += f"\n\nТелефон Стороны 2: {payload.phone}"
+        party_label = "Стороны 2" if participant_role == ParticipantRole.party_2 else "Стороны 1"
+        updated += f"\n\nРеквизиты {party_label}:\n" + "\n".join(details)
+    party_number = "2" if participant_role == ParticipantRole.party_2 else "1"
+    if payload.phone and f"телефон стороны {party_number}" not in updated.lower():
+        updated += f"\n\nТелефон Стороны {party_number}: {payload.phone}"
     if payload.inn and payload.party_type != "business" and "инн" not in updated.lower():
-        updated += f"\nИНН Стороны 2: {payload.inn}"
+        updated += f"\nИНН Стороны {party_number}: {payload.inn}"
     if payload.email and str(payload.email).lower() not in updated.lower():
-        updated += f"\nEmail Стороны 2: {payload.email}"
+        updated += f"\nEmail Стороны {party_number}: {payload.email}"
     return updated
 
 
@@ -2184,7 +2211,6 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
             raise HTTPException(status_code=400, detail="ИНН должен содержать 10 или 12 цифр")
         if not re.fullmatch(r"\d{13}|\d{15}", payload.ogrn.strip()):
             raise HTTPException(status_code=400, detail="ОГРН или ОГРНИП должен содержать 13 или 15 цифр")
-
     session = get_session_by_review_token(db, invite_token)
     latest_version = get_latest_version(db, session)
     if latest_version is None:
@@ -2232,7 +2258,7 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
             ),
         )
     )
-    temp_content = apply_ephemeral_party_data(latest_version.content, payload)
+    temp_content = apply_ephemeral_party_data(latest_version.content, payload, ParticipantRole.party_2)
     session.pending_signing_content = temp_content
     if owner and not is_guest_user(owner):
         send_signature_progress_notice(owner.email, session.title, f"{settings.app_base_url}/?session={session.id}")
@@ -2827,11 +2853,47 @@ def create_version(
 
 
 @app.post("/sessions/{session_id}/approve")
-def approve_version(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def approve_version(
+    session_id: str,
+    payload: ReviewApproveRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     session = get_accessible_session(db, session_id, user)
     latest_version = get_latest_version(db, session)
     if latest_version is None:
         raise HTTPException(status_code=400, detail="Нет версии договора для согласования")
+    if session.owner_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Финальную подпись ставит создатель договора")
+    require_unified_consent(
+        payload.personal_data_accepted,
+        payload.service_rules_accepted,
+        payload.cookies_accepted,
+        payload.consent_version,
+    )
+    if payload.party_type not in {"individual", "business"}:
+        raise HTTPException(status_code=400, detail="Выберите тип стороны")
+    if str(payload.email).lower() != user.email.lower():
+        raise HTTPException(status_code=403, detail="Email подписанта не совпадает с аккаунтом")
+    if len(payload.full_name.strip().split()) < 2:
+        raise HTTPException(status_code=400, detail="Укажите ФИО полностью")
+    phone_digits = re.sub(r"\D", "", payload.phone)
+    if not 10 <= len(phone_digits) <= 15:
+        raise HTTPException(status_code=400, detail="Проверьте номер телефона")
+    if payload.party_type == "individual" and not re.fullmatch(r"\d{4}\s?\d{6}", payload.passport.strip()):
+        raise HTTPException(status_code=400, detail="Паспорт нужно указать в формате 0000 000000")
+    if payload.party_type == "business":
+        if not payload.organization_name.strip():
+            raise HTTPException(status_code=400, detail="Укажите наименование организации или ИП")
+        if not re.fullmatch(r"\d{10}|\d{12}", payload.inn.strip()):
+            raise HTTPException(status_code=400, detail="ИНН должен содержать 10 или 12 цифр")
+        if not re.fullmatch(r"\d{13}|\d{15}", payload.ogrn.strip()):
+            raise HTTPException(status_code=400, detail="ОГРН или ОГРНИП должен содержать 13 или 15 цифр")
+    apply_user_consent(user)
+
+    signing_content = session.pending_signing_content or latest_version.content
+    signing_content = apply_ephemeral_party_data(signing_content, payload, ParticipantRole.party_1)
+    session.pending_signing_content = signing_content
 
     participant = get_user_participant(db, session, user)
     participant.approval_status = ApprovalStatus.approved

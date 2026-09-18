@@ -666,6 +666,18 @@ function App() {
   const [reviewFormOpen, setReviewFormOpen] = useState(false);
   const [reviewConfirmation, setReviewConfirmation] = useState(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [ownerSigningOpen, setOwnerSigningOpen] = useState(false);
+  const [ownerSubmitting, setOwnerSubmitting] = useState(false);
+  const [ownerForm, setOwnerForm] = useState({
+    partyType: "individual",
+    fullName: "Петров Петр Петрович",
+    passport: DEMO_REVIEW_PASSPORT,
+    phone: "+7 900 000-00-00",
+    inn: "",
+    ogrn: "",
+    organizationName: "",
+    accepted: storedConsentVersion === CONSENT_VERSION,
+  });
   const [inviteSending, setInviteSending] = useState(false);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const messagesEndRef = useRef(null);
@@ -724,6 +736,7 @@ function App() {
     localStorage.setItem("ai-arbitr-consent-version", CONSENT_VERSION);
     setAccepted(true);
     setReviewForm((form) => ({ ...form, accepted: true }));
+    setOwnerForm((form) => ({ ...form, accepted: true }));
     setCookieConsentVisible(false);
     if (authed && !reviewToken) {
       await fetch(`${API_URL}/auth/consent`, {
@@ -1364,20 +1377,53 @@ function App() {
     window.open(`${API_URL}/sessions/${currentSession.id}/certificate.pdf`, "_blank", "noopener,noreferrer");
   }
 
-  async function signAsFirstParty() {
-    if (!currentSession) return;
-    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/approve`, {
-      method: "POST",
-      credentials: "include",
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setAppNotice(data.detail || "Не удалось подписать договор.");
+  async function signAsFirstParty(event) {
+    event.preventDefault();
+    if (!currentSession || ownerSubmitting) return;
+    const demoDataLeft =
+      ownerForm.fullName.trim() === "Петров Петр Петрович" ||
+      (ownerForm.partyType === "individual" && ownerForm.passport.trim() === DEMO_REVIEW_PASSPORT);
+    if (demoDataLeft && !window.confirm("В форме остались примерные реквизиты. Подписать с ними или сначала заменить на реальные данные?")) {
       return;
     }
-    setAppNotice(data.finalized ? "Договор подписан." : "Подпись зафиксирована.");
-    loadSession(currentSession.id);
-    loadSessions();
+    setOwnerSubmitting(true);
+    try {
+      const response = await fetch(`${API_URL}/sessions/${currentSession.id}/approve`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          party_type: ownerForm.partyType,
+          full_name: ownerForm.fullName,
+          passport: ownerForm.passport,
+          phone: ownerForm.phone,
+          inn: ownerForm.inn,
+          ogrn: ownerForm.ogrn,
+          organization_name: ownerForm.organizationName,
+          email,
+          personal_data_accepted: ownerForm.accepted,
+          service_rules_accepted: ownerForm.accepted,
+          cookies_accepted: ownerForm.accepted,
+          consent_version: CONSENT_VERSION,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setAppNotice(data.detail || "Не удалось подписать договор.");
+        return;
+      }
+      setOwnerSigningOpen(false);
+      setInviteConfirmation(
+        data.finalized
+          ? "Договор подписан обеими сторонами. Финальный PDF и справка направлены на email сторон."
+          : "Ваша подпись зафиксирована."
+      );
+      setAppNotice(data.finalized ? "Договор подписан обеими сторонами." : "Подпись зафиксирована.");
+      loadSession(currentSession.id);
+      loadSessions();
+    } finally {
+      setOwnerSubmitting(false);
+    }
   }
 
   async function markCompleted() {
@@ -2080,7 +2126,7 @@ function App() {
         {inviteConfirmation && (
           <div className="invite-confirmation" role="status" aria-live="polite">
             <div>
-              <strong>Ссылка направлена</strong>
+              <strong>{inviteConfirmation.startsWith("Договор подписан") ? "Договор подписан" : "Ссылка направлена"}</strong>
               <p>{inviteConfirmation}</p>
             </div>
             <button type="button" onClick={() => setInviteConfirmation("")} aria-label="Закрыть уведомление">
@@ -2158,9 +2204,38 @@ function App() {
                       <div className="quick-flow">
                         <strong>Вторая сторона подписала договор.</strong>
                         <p>Проверьте финальную редакцию и подпишите договор со своей стороны. После этого будет сформирована PDF-версия с отметками простой электронной подписи.</p>
-                        <button onClick={signAsFirstParty}>
-                          <Check size={16} /> Подписать со своей стороны
-                        </button>
+                        {!ownerSigningOpen ? (
+                          <button onClick={() => setOwnerSigningOpen(true)}>
+                            <Check size={16} /> Подписать со своей стороны
+                          </button>
+                        ) : (
+                          <form className="review-form owner-signing-form" onSubmit={signAsFirstParty}>
+                            <h2>Ваши реквизиты</h2>
+                            <div className="party-type-switch" aria-label="Тип стороны">
+                              <button type="button" className={ownerForm.partyType === "individual" ? "active" : ""} onClick={() => setOwnerForm((form) => ({ ...form, partyType: "individual" }))}>Физлицо</button>
+                              <button type="button" className={ownerForm.partyType === "business" ? "active" : ""} onClick={() => setOwnerForm((form) => ({ ...form, partyType: "business" }))}>Организация / ИП</button>
+                            </div>
+                            {ownerForm.partyType === "business" && (
+                              <input value={ownerForm.organizationName} onChange={(event) => setOwnerForm((form) => ({ ...form, organizationName: event.target.value }))} placeholder="Наименование организации или ИП" required />
+                            )}
+                            <input value={ownerForm.fullName} onChange={(event) => setOwnerForm((form) => ({ ...form, fullName: event.target.value }))} placeholder={ownerForm.partyType === "business" ? "ФИО подписанта" : "Фамилия Имя Отчество"} required />
+                            {ownerForm.partyType === "individual" ? (
+                              <input value={ownerForm.passport} onChange={(event) => setOwnerForm((form) => ({ ...form, passport: event.target.value }))} placeholder="Паспорт: 0000 000000" inputMode="numeric" pattern="[0-9]{4} ?[0-9]{6}" required />
+                            ) : (
+                              <>
+                                <input value={ownerForm.inn} onChange={(event) => setOwnerForm((form) => ({ ...form, inn: event.target.value }))} placeholder="ИНН" inputMode="numeric" pattern="[0-9]{10}|[0-9]{12}" required />
+                                <input value={ownerForm.ogrn} onChange={(event) => setOwnerForm((form) => ({ ...form, ogrn: event.target.value }))} placeholder="ОГРН или ОГРНИП" inputMode="numeric" pattern="[0-9]{13}|[0-9]{15}" required />
+                              </>
+                            )}
+                            <input value={ownerForm.phone} onChange={(event) => setOwnerForm((form) => ({ ...form, phone: event.target.value }))} placeholder="Телефон" required />
+                            <input value={email} readOnly aria-readonly="true" />
+                            <label className="checkbox-row">
+                              <input type="checkbox" checked={ownerForm.accepted} onChange={(event) => setOwnerForm((form) => ({ ...form, accepted: event.target.checked }))} required />
+                              <ConsentText />
+                            </label>
+                            <button disabled={ownerSubmitting}><Check size={16} /> {ownerSubmitting ? "Подписываю..." : "Подписать"}</button>
+                          </form>
+                        )}
                       </div>
                     ) : questionResolved ? (
                       <div className="quick-flow">
