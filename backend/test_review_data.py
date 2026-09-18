@@ -2,10 +2,43 @@ import unittest
 
 from fastapi import HTTPException
 
-from app.main import ReviewApproveRequest, apply_ephemeral_party_data, require_unified_consent
+from app.main import (
+    ReviewApproveRequest,
+    add_norm_to_contract,
+    apply_ephemeral_party_data,
+    build_rule_based_addition_review,
+    require_unified_consent,
+)
 
 
 class ReviewPartyDataTest(unittest.TestCase):
+    def test_hookah_request_stays_on_topic(self):
+        answer = build_rule_based_addition_review("Включи в договор пункт о разрешении курить кальян")
+
+        self.assertIn("кальян", answer.lower())
+        self.assertIn("Вариант 1 — краткий", answer)
+        self.assertIn("Вариант 2 — расширенный", answer)
+        self.assertNotIn("рассроч", answer.lower())
+
+    def test_home_services_request_requires_legal_context(self):
+        answer = build_rule_based_addition_review("Разрешить оказывать косметические услуги на дому")
+
+        self.assertIn("статьи 17 ЖК РФ", answer)
+        self.assertIn("статья 288 ГК РФ", answer)
+        self.assertIn("Уточните", answer)
+
+    def test_usage_rule_is_inserted_into_rights_section(self):
+        contract = (
+            "1. ПРЕДМЕТ ДОГОВОРА\n1.1. Предмет.\n\n"
+            "2. ПРАВА И ОБЯЗАННОСТИ СТОРОН\n2.1. Наниматель соблюдает права соседей.\n\n"
+            "3. ПЛАТА И РАСЧЕТЫ\n3.1. Плата составляет 100 рублей."
+        )
+
+        result = add_norm_to_contract(contract, "[Номер пункта]. Нанимателю разрешается использовать кальян.")
+
+        self.assertIn("2.2. Нанимателю разрешается использовать кальян.", result)
+        self.assertLess(result.index("2.2."), result.index("3. ПЛАТА"))
+
     def test_unified_consent_requires_all_parts(self):
         require_unified_consent(True, True, True, "1.0")
         with self.assertRaises(HTTPException):

@@ -594,6 +594,32 @@ def add_norm_to_contract(contract_text: str, norm: str) -> str:
     if re.sub(r"\s+", " ", clean_norm.lower())[:120] in re.sub(r"\s+", " ", contract_text.lower()):
         return contract_text
 
+    normalized = clean_norm.lower().replace("ё", "е")
+    section_rules = (
+        (("плат", "цен", "стоим", "депозит", "обеспечитель", "расчет"), ("ПЛАТ", "РАСЧЕТ", "ЦЕН")),
+        (("срок", "пролонг", "расторж", "прекращ"), ("СРОК", "ИЗМЕНЕНИЕ И РАСТОРЖЕНИЕ", "ПРЕКРАЩЕН")),
+        (("неустой", "ответствен", "возмест", "ущерб"), ("ОТВЕТСТВЕННОСТ",)),
+        (("разреш", "запрещ", "кальян", "курен", "пользован", "обязан"), ("ПРАВА И ОБЯЗАННОСТИ", "ПОРЯДОК ПОЛЬЗОВАНИЯ")),
+    )
+    target_headings: tuple[str, ...] = ()
+    for markers, headings in section_rules:
+        if any(marker in normalized for marker in markers):
+            target_headings = headings
+            break
+
+    for heading in target_headings:
+        heading_match = re.search(rf"(?im)^(\d+)\.\s*[^\n]*{re.escape(heading)}[^\n]*$", contract_text)
+        if not heading_match:
+            continue
+        section_number = int(heading_match.group(1))
+        next_heading = re.search(rf"(?m)^({section_number + 1}|\d{{2,}})\.\s+", contract_text[heading_match.end():])
+        section_end = heading_match.end() + next_heading.start() if next_heading else len(contract_text)
+        section_text = contract_text[heading_match.start():section_end]
+        item_numbers = [int(value) for value in re.findall(rf"(?m)^{section_number}\.(\d+)\.\s*", section_text)]
+        item_number = max(item_numbers, default=0) + 1
+        numbered_norm = f"{section_number}.{item_number}. {clean_norm}"
+        return (contract_text[:section_end].rstrip() + "\n" + numbered_norm + "\n\n" + contract_text[section_end:].lstrip()).strip()
+
     additional_section = "ДОПОЛНИТЕЛЬНЫЕ УСЛОВИЯ, СОГЛАСОВАННЫЕ В ХОДЕ ОБСУЖДЕНИЯ\n\n"
     additional_section += f"[Номер пункта]. {clean_norm}"
     dispute_index = contract_text.find("8. ПОРЯДОК РАЗРЕШЕНИЯ СПОРОВ")
@@ -1252,6 +1278,78 @@ def build_rule_based_contract_norm(dialogue: str) -> str | None:
         )
 
     return None
+
+
+def build_rule_based_addition_review(requested_change: str) -> str | None:
+    normalized = requested_change.lower().replace("ё", "е")
+    if "кальян" in normalized:
+        return (
+            "Проверил условие в контексте договора найма. Прямого запрета на использование кальяна "
+            "внутри частного жилого помещения нет, но условие не должно разрешать курение в местах общего "
+            "пользования, нарушение прав соседей, требований пожарной безопасности или причинение ущерба квартире.\n\n"
+            "Разместить условие правильно в разделе о правах и обязанностях Нанимателя.\n\n"
+            "Вариант 1 — краткий:\n"
+            "[Номер пункта]. Нанимателю разрешается использовать кальян внутри Жилого помещения при соблюдении "
+            "требований пожарной безопасности и прав соседей.\n\n"
+            "Вариант 2 — расширенный:\n"
+            "[Номер пункта]. Нанимателю разрешается использовать кальян исключительно внутри Жилого помещения. "
+            "Использование кальяна в местах общего пользования не допускается. Наниматель обязан соблюдать "
+            "требования пожарной безопасности, не допускать задымления помещений общего пользования, нарушения "
+            "прав соседей и повреждения отделки или имущества и возместить причиненный по его вине ущерб.\n\n"
+            "Выберите: краткая, расширенная или пришлите свою редакцию."
+        )
+
+    business_markers = ("космет", "маникюр", "массаж", "парикмах", "услуг")
+    home_business_markers = ("на дому", "в квартир", "в жилом", "клиент")
+    if any(marker in normalized for marker in business_markers) and any(marker in normalized for marker in home_business_markers):
+        return (
+            "Однозначно включить разрешение в такой формулировке нельзя: сначала нужно понять масштаб деятельности. "
+            "Часть 2 статьи 17 ЖК РФ допускает профессиональную или предпринимательскую деятельность в жилом "
+            "помещении для законно проживающего гражданина, если она не нарушает права соседей и требования к жилью. "
+            "При этом статья 288 ГК РФ не позволяет фактически разместить в квартире организацию без перевода "
+            "помещения в нежилое.\n\n"
+            "Уточните: услуги оказывает сам Наниматель без работников и вывески, сколько клиентов планируется "
+            "принимать в день и требуется ли специальное оборудование? После этого я смогу проверить условие и "
+            "предложить безопасную редакцию."
+        )
+
+    prohibited_markers = ("производство", "хостел", "гостиниц", "наркот", "незакон")
+    if any(marker in normalized for marker in prohibited_markers):
+        return (
+            "Включить такое разрешение в договор нельзя: соглашение сторон не может узаконить использование "
+            "жилого помещения вопреки его назначению и обязательным требованиям закона. Предложите законную "
+            "альтернативу, и я проверю ее отдельно."
+        )
+    return None
+
+
+async def review_contract_addition(contract_text: str, requested_change: str, model: str | None) -> str:
+    rule_based = build_rule_based_addition_review(requested_change)
+    if rule_based:
+        return rule_based
+    prompt = [
+        {
+            "role": "system",
+            "text": (
+                "Ты договорный юрист РФ. Анализируй ТОЛЬКО последнюю просьбу пользователя и текущий договор; "
+                "не переноси темы из предыдущего диалога. Сначала проверь, допустимо ли условие по императивным "
+                "нормам закона, назначению договора и балансу сторон. Не выдумывай номер статьи: указывай статью "
+                "только если уверен. Если условие незаконно, напиши, что включить его нельзя, объясни причину и "
+                "не предлагай редакции. Если нужны факты для правовой оценки, задай один конкретный уточняющий вопрос. "
+                "Если условие допустимо, назови подходящий раздел договора и предложи две редакции одной нормы. "
+                "Формат вариантов строго: «Вариант 1 — краткий:» и «Вариант 2 — расширенный:». Заверши фразой "
+                "«Выберите: краткая, расширенная или пришлите свою редакцию». Не возвращай полный договор."
+            ),
+        },
+        {
+            "role": "user",
+            "text": (
+                f"Последняя просьба, которую нужно проверить:\n{requested_change}\n\n"
+                f"Текущая версия договора:\n{contract_text}"
+            ),
+        },
+    ]
+    return await ask_yandex_gpt(prompt, model=model)
 
 
 def is_deposit_split_question(text: str) -> bool:
@@ -2621,6 +2719,34 @@ async def send_message(
         db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
         db.commit()
         return {"content": answer, "contract_saved": True, "reasoning": reasoning, "next_action": "agreement"}
+
+    if latest_version_before_answer is not None and is_contract_update:
+        requested_change = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
+        try:
+            answer = await review_contract_addition(
+                latest_version_before_answer.content,
+                requested_change,
+                payload.model,
+            )
+        except YandexGPTError:
+            answer = (
+                "Не удалось надежно проверить законность именно этого условия. Я не буду подменять вашу просьбу "
+                "другой нормой. Сформулируйте, пожалуйста, кто получает право, какое действие разрешается и при "
+                "каких ограничениях, после чего я повторю проверку."
+            )
+        next_action = (
+            "choose_norm"
+            if "вариант 1" in answer.lower() and "вариант 2" in answer.lower()
+            else "clarify_addition"
+        )
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {
+            "content": answer,
+            "contract_saved": False,
+            "reasoning": "",
+            "next_action": next_action,
+        }
 
     if latest_version_before_answer is None and not is_contract_update and needs_service_type_clarification(payload.content):
         answer = build_service_type_clarification(payload.content)
