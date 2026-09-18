@@ -34,6 +34,28 @@ class ReviewPartyDataTest(unittest.TestCase):
         self.assertIn("party2@example.org", result)
         self.assertNotIn("Иванов Иван Иванович", result)
 
+    def test_legacy_demo_passport_details_are_removed(self):
+        payload = ReviewApproveRequest(
+            party_type="individual",
+            full_name="Сидоров Сергей Сергеевич",
+            passport="1234 567890",
+            phone="+7 999 123-45-67",
+            email="party2@example.org",
+            personal_data_accepted=True,
+        )
+        contract = (
+            "Гражданин РФ Иванов Иван Иванович, паспорт серии 1111 № 111111, "
+            "выдан ОВД района 01 января 2020 г., код подразделения 000-000, "
+            "зарегистрированный по адресу: г. Москва, ул. Тестовая, д. 1, "
+            "именуемый в дальнейшем «Наниматель»."
+        )
+
+        result = apply_ephemeral_party_data(contract, payload)
+
+        self.assertNotIn("выдан ОВД", result)
+        self.assertNotIn("зарегистрированный по адресу", result)
+        self.assertIn("паспорт серии 1234 № 567890, именуемый", result)
+
     def test_owner_data_replaces_landlord_requisites_only(self):
         payload = ReviewApproveRequest(
             party_type="individual",

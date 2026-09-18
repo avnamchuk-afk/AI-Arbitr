@@ -1031,7 +1031,14 @@ def apply_ephemeral_party_data(
     payload: ReviewApproveRequest,
     participant_role: ParticipantRole = ParticipantRole.party_2,
 ) -> str:
-    updated = contract_text
+    # The MVP collects only the passport number, so remove legacy demo-only
+    # issuing authority and registration address from every party line.
+    updated = re.sub(
+        r",\s*выдан[^\n]*?,\s*именуемый",
+        ", именуемый",
+        contract_text,
+        flags=re.IGNORECASE,
+    )
     legal_role = "Наниматель" if participant_role == ParticipantRole.party_2 else "Наймодатель"
     passport_digits = re.sub(r"\D", "", payload.passport)
     lines = updated.splitlines()
