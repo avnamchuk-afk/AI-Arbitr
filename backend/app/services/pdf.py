@@ -1,5 +1,6 @@
 from io import BytesIO
 import hashlib
+import re
 from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
@@ -7,7 +8,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from app.models.entities import ContractSession, ContractVersion, Message, ContractParticipant
 
@@ -46,6 +47,23 @@ def hash_value(value: str) -> str:
 
 def hash_text(value: str) -> str:
     return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
+
+
+def extract_party_name(contract_text: str, legal_role: str) -> str:
+    for line in (contract_text or "").splitlines():
+        if f"«{legal_role}»" not in line:
+            continue
+        match = re.search(r"Гражданин РФ\s+([^,]+)", line, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return "не указано"
+
+
+def extract_contract_title(contract_text: str, fallback: str) -> str:
+    first_line = next((line.strip() for line in (contract_text or "").splitlines() if line.strip()), "")
+    if not first_line:
+        return fallback or "Договор"
+    return re.sub(r"\s*№\s*\S+.*$", "", first_line, count=1).title()
 
 
 def mask_email(email: str) -> str:
@@ -127,42 +145,19 @@ def build_contract_pdf(
         leftMargin=18 * mm,
         topMargin=18 * mm,
         bottomMargin=18 * mm,
-        title="AI-Арбитр - договор и история",
+        title="AI-Arbitr - договор",
     )
 
     story = [
-        para(session.title or "Договор", styles["AITitle"]),
         para(final_version.content, styles["AIBase"]),
-        Spacer(1, 10),
-        para("Отметки простой электронной подписи", styles["AIHeading"]),
+        Spacer(1, 12),
+        para(
+            "Договор подписан сторонами с помощью сервиса AI-Arbitr путем обмена электронными сообщениями "
+            "с применением простой электронной подписи в соответствии с Федеральным законом "
+            "от 06.04.2011 № 63-ФЗ «Об электронной подписи».",
+            styles["AIBase"],
+        ),
     ]
-    for participant in participants:
-        user_email = participant.user.email if getattr(participant, "user", None) else "не привязан"
-        signed_at = session.finalized_at if participant.role.value == "party_1" else participant.joined_at
-        if participant.approval_status.value == "approved":
-            story.append(
-                para(
-                    "Подписано простой электронной подписью через сервис AI-arbitr. "
-                    f"Сторона: {participant.role.value}. Email/идентификатор: {user_email}. "
-                    f"Дата и время подписания: {signed_at or 'не указано'}. "
-                    f"ID договора: {session.id}.",
-                    styles["AIBase"],
-                )
-            )
-
-    story.extend(
-        [
-            para(f"ID сессии: {session.id}", styles["AIBase"]),
-            para(f"Дата финализации: {session.finalized_at or 'не указана'}", styles["AIBase"]),
-            PageBreak(),
-            para("История обсуждения", styles["AIHeading"]),
-        ]
-    )
-
-    for message in messages:
-        created_at = message.created_at.isoformat() if message.created_at else ""
-        story.append(para(f"{created_at} / {message.role.value}", styles["AIHeading"]))
-        story.append(para(message.content, styles["AIBase"]))
 
     doc.build(story)
     return buffer.getvalue()
@@ -220,67 +215,34 @@ def build_interaction_certificate_pdf(
     )
 
     content_hash = session.final_content_hash or hash_text(final_version.content)
+    party_names = {
+        "party_1": extract_party_name(final_version.content, "Наймодатель"),
+        "party_2": extract_party_name(final_version.content, "Наниматель"),
+    }
     story = [
         para("Справка о факте электронного взаимодействия", styles["AITitle"]),
-        para(
-            "Документ сформирован сервисом AI-arbitr и фиксирует технические сведения о согласовании договора. "
-            "Полные паспортные данные, телефон и полный адрес электронной почты в справке не раскрываются.",
-            styles["AIBase"],
-        ),
-        para("Договор", styles["AIHeading"]),
-        para(f"Наименование: {session.title or 'Договор'}", styles["AIBase"]),
-        para(f"ID сессии: {session.id}", styles["AIBase"]),
-        para(f"Статус: {session.status.value}", styles["AIBase"]),
-        para(f"Финальная версия: № {final_version.version_number}, ID {final_version.id}", styles["AIBase"]),
-        para(f"Версия AI-Arbitr: {final_version.app_version or 'legacy'}", styles["AIBase"]),
-        para(
-            f"Шаблон: {final_version.template_id or 'legacy'}, редакция {final_version.template_version or 'не зафиксирована'}",
-            styles["AIBase"],
-        ),
+        para(f"Наименование: {extract_contract_title(final_version.content, session.title)}", styles["AIBase"]),
+        para(f"Финальная версия: № {final_version.version_number}", styles["AIBase"]),
         para(f"Дата финализации: {session.finalized_at or 'не указана'}", styles["AIBase"]),
-        para(f"SHA-256 текста финальной версии: {content_hash}", styles["AIBase"]),
         para("Стороны", styles["AIHeading"]),
     ]
 
     for participant in participants:
         user_email = participant.user.email if getattr(participant, "user", None) else ""
-        email_hash = hash_value(user_email)
         story.append(
             para(
-                " | ".join(
-                    [
-                        f"Роль: {participant.role.value}",
-                        f"UID стороны: {participant.user_id or participant.id}",
-                        f"Статус: {participant.approval_status.value}",
-                        f"Версия согласия: {participant.approved_version_id or 'не указана'}",
-                        f"Дата подписания: {participant.signed_at or 'не указана'}",
-                        f"Дата присоединения: {participant.joined_at or 'не указана'}",
-                        f"Email: {mask_email(user_email)}",
-                        f"Email SHA-256: {email_hash or 'не указан'}",
-                    ]
-                ),
+                f"{party_names.get(participant.role.value, 'не указано')} — {user_email}. "
+                f"Подписано: {participant.signed_at or 'не указано'}.",
                 styles["AIBase"],
             )
         )
 
-    story.append(para("Технические события", styles["AIHeading"]))
-    for message in messages:
-        if message.role.value != "system":
-            continue
-        content = safe_event_content(message.content)
-        if not content:
-            continue
-        created_at = message.created_at.isoformat() if message.created_at else ""
-        story.append(para(f"{created_at} / {message.role.value}: {content}", styles["AIBase"]))
-
     story.extend(
         [
-            para("Назначение справки", styles["AIHeading"]),
-            para(
-                "Справка предназначена для подтверждения факта электронного взаимодействия, согласования версии договора "
-                "и формирования простой электронной подписи в сервисе AI-arbitr.",
-                styles["AIBase"],
-            ),
+            para("Служебные данные", styles["AIHeading"]),
+            para(f"ID договора: {session.id}", styles["AIBase"]),
+            para(f"SHA-256 финального текста: {content_hash}", styles["AIBase"]),
+            para("Способ подписания: простая электронная подпись через подтвержденные адреса электронной почты.", styles["AIBase"]),
         ]
     )
 

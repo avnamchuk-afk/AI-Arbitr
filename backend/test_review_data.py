@@ -75,6 +75,33 @@ class ReviewPartyDataTest(unittest.TestCase):
         self.assertIn("Гражданин РФ Новый Наймодатель, паспорт серии 9876 № 543210", result)
         self.assertIn("Гражданин РФ Старый Наниматель, паспорт серии 2222 № 222222", result)
 
+    def test_housing_requisites_section_uses_confirmed_data(self):
+        payload = ReviewApproveRequest(
+            party_type="individual",
+            full_name="Сидоров Сергей Сергеевич",
+            passport="1234 567890",
+            phone="+7 999 123-45-67",
+            email="party2@example.org",
+            personal_data_accepted=True,
+        )
+        contract = (
+            "ДОГОВОР\nГражданин РФ Старый Наниматель, паспорт серии 1111 № 111111, именуемый в дальнейшем «Наниматель».\n\n"
+            "11. РЕКВИЗИТЫ СТОРОН И ЭЛЕКТРОННОЕ ПОДПИСАНИЕ\n\n"
+            "НАЙМОДАТЕЛЬ:\nФ.И.О.: Игровой Наймодатель\nПаспорт: серия 1111 № 111111\n\n"
+            "НАНИМАТЕЛЬ:\nФ.И.О.: Игровой Наниматель\nПаспорт: серия 1111 № 111111\n"
+            "Адрес регистрации: игровой адрес\nТел.: +7 000 000-00-00\nE-mail: game@example.com\n\n"
+            "11.1. Договор подписывается сторонами простой электронной подписью через сервис AI-Arbitr."
+        )
+
+        result = apply_ephemeral_party_data(contract, payload)
+
+        self.assertIn("НАНИМАТЕЛЬ:\nФ.И.О.: Сидоров Сергей Сергеевич", result)
+        self.assertIn("Паспорт: серия 1234 № 567890", result)
+        self.assertIn("Телефон: +7 999 123-45-67", result)
+        self.assertIn("E-mail: party2@example.org", result)
+        self.assertNotIn("игровой адрес", result)
+        self.assertNotIn("11.1. Договор подписывается", result)
+
     def test_business_data_is_added_to_contract(self):
         payload = ReviewApproveRequest(
             party_type="business",

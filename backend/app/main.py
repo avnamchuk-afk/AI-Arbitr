@@ -1057,6 +1057,36 @@ def apply_ephemeral_party_data(
         replaced_requisites = True
         break
     updated = "\n".join(lines)
+    section_label = "НАНИМАТЕЛЬ" if participant_role == ParticipantRole.party_2 else "НАЙМОДАТЕЛЬ"
+    other_label = "НАЙМОДАТЕЛЬ" if participant_role == ParticipantRole.party_2 else "НАНИМАТЕЛЬ"
+    passport_line = (
+        f"Паспорт: серия {passport_digits[:4]} № {passport_digits[4:]}"
+        if len(passport_digits) == 10
+        else f"Паспорт: {payload.passport}"
+    )
+    requisites_block = (
+        f"{section_label}:\n"
+        f"Ф.И.О.: {payload.full_name}\n"
+        f"{passport_line}\n"
+        f"Телефон: {payload.phone}\n"
+        f"E-mail: {payload.email}"
+    )
+    section_pattern = rf"{section_label}:\s*\n.*?(?=\n\s*{other_label}:|\n\s*11\.1\.)"
+    updated, section_replacements = re.subn(
+        section_pattern,
+        requisites_block,
+        updated,
+        count=1,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if section_replacements:
+        updated = re.sub(
+            r"\n\s*11\.1\.\s*Договор подписывается сторонами простой электронной подписью[^\n]*",
+            "",
+            updated,
+            count=1,
+            flags=re.IGNORECASE,
+        )
     if not replaced_requisites and payload.party_type == "individual":
         updated += (
             f"\n\nРеквизиты {'Стороны 2' if participant_role == ParticipantRole.party_2 else 'Стороны 1'}:\n"
@@ -1072,11 +1102,11 @@ def apply_ephemeral_party_data(
         party_label = "Стороны 2" if participant_role == ParticipantRole.party_2 else "Стороны 1"
         updated += f"\n\nРеквизиты {party_label}:\n" + "\n".join(details)
     party_number = "2" if participant_role == ParticipantRole.party_2 else "1"
-    if payload.phone and f"телефон стороны {party_number}" not in updated.lower():
+    if section_replacements == 0 and payload.phone and f"телефон стороны {party_number}" not in updated.lower():
         updated += f"\n\nТелефон Стороны {party_number}: {payload.phone}"
     if payload.inn and payload.party_type != "business" and "инн" not in updated.lower():
         updated += f"\nИНН Стороны {party_number}: {payload.inn}"
-    if payload.email and str(payload.email).lower() not in updated.lower():
+    if section_replacements == 0 and payload.email and str(payload.email).lower() not in updated.lower():
         updated += f"\nEmail Стороны {party_number}: {payload.email}"
     return updated
 
