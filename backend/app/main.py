@@ -2974,7 +2974,10 @@ def approve_version(
             .order_by(Message.created_at.asc())
             .all()
         )
-        pdf_version = SimpleNamespace(content=signing_content)
+        pdf_version = SimpleNamespace(
+            content=signing_content,
+            version_number=latest_version.version_number,
+        )
         pdf_bytes = build_contract_pdf(session, pdf_version, participants, messages)
         certificate_bytes = build_interaction_certificate_pdf(session, latest_version, participants, messages)
         calendar_link = build_contract_calendar_link(session, latest_version)
