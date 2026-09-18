@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import LandingPage from "./LandingPage.jsx";
 import KnowledgeBase from "./KnowledgeBase.jsx";
-import { APP_VERSION } from "./version.js";
+import { APP_VERSION, APP_VERSION_SHORT } from "./version.js";
 import "./styles.css";
 
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
@@ -460,7 +460,7 @@ function LogoMark({ compact = false, onClick }) {
         <i />
       </span>
       <span className="brand-word">AI-Arbitr</span>
-      <span className="brand-beta">beta</span>
+      <span className="brand-beta">β {APP_VERSION_SHORT}</span>
     </>
   );
   if (onClick) {
@@ -476,7 +476,7 @@ function LogoMark({ compact = false, onClick }) {
     );
   }
   return (
-    <div className={compact ? "brand-mark compact" : "brand-mark"} aria-label="AI-Arbitr beta">
+    <div className={compact ? "brand-mark compact" : "brand-mark"} aria-label={`AI-Arbitr beta ${APP_VERSION_SHORT}`}>
       {content}
     </div>
   );

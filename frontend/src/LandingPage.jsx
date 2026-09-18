@@ -14,6 +14,7 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+import { APP_VERSION_SHORT } from "./version.js";
 import "./landing.css";
 
 const appHref = "/";
@@ -137,7 +138,7 @@ function LandingHeader() {
       <a className="landing-brand" href="#top" aria-label="AI-Arbitr">
         <span>A</span>
         <strong>AI-Arbitr</strong>
-        <i>beta</i>
+        <i>β {APP_VERSION_SHORT}</i>
       </a>
       <nav aria-label="Навигация лендинга">
         <a href="#how">Как работает</a>

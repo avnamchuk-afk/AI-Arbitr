@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, BookOpen, ChevronRight, Clock3, ExternalLink, Search } from "lucide-react";
 import { getKnowledgeArticle, knowledgeArticles, knowledgeCategories } from "./knowledgeContent.js";
+import { APP_VERSION_SHORT } from "./version.js";
 import "./knowledge.css";
 
 const articleHref = (slug) => `/knowledge/${slug}`;
@@ -20,7 +21,7 @@ function KnowledgeHeader() {
   return (
     <header className="knowledge-header">
       <a className="knowledge-brand" href="/landing" aria-label="Вернуться на лендинг AI-Arbitr">
-        <span>A</span><strong>AI-Arbitr</strong><i>beta</i>
+        <span>A</span><strong>AI-Arbitr</strong><i>β {APP_VERSION_SHORT}</i>
       </a>
       <nav aria-label="Навигация базы знаний">
         <a href="/landing">О сервисе</a>
