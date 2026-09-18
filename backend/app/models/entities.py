@@ -102,6 +102,8 @@ class ContractSession(Base):
     invite_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     pending_signing_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     final_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    party_1_legal_role: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    party_2_legal_role: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 

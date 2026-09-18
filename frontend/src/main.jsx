@@ -356,6 +356,16 @@ function getContractContext(session, detail) {
   return `${session?.title || ""}\n${detail?.latest_version?.content || ""}`.toLowerCase();
 }
 
+function getLegalRoleOptions(session, detail) {
+  const context = getContractContext(session, detail);
+  if (context.includes("найм") || context.includes("нанимател") || context.includes("жилое помещ")) return ["Наймодатель", "Наниматель"];
+  if (context.includes("аренд")) return ["Арендодатель", "Арендатор"];
+  if (context.includes("купл") || context.includes("продавец") || context.includes("покупател")) return ["Продавец", "Покупатель"];
+  if (context.includes("подряд") || context.includes("подрядчик")) return ["Заказчик", "Подрядчик"];
+  if (context.includes("займ")) return ["Займодавец", "Заемщик"];
+  return ["Заказчик", "Исполнитель"];
+}
+
 function getQuestionPlaceholder(session, detail) {
   const context = getContractContext(session, detail);
   if (context.includes("найм") || context.includes("квартир") || context.includes("жил")) {
@@ -639,6 +649,7 @@ function App() {
   const [inviteLink, setInviteLink] = useState("");
   const [appNotice, setAppNotice] = useState("");
   const [partyEmail, setPartyEmail] = useState("");
+  const [creatorLegalRole, setCreatorLegalRole] = useState("");
   const [deleteCandidateId, setDeleteCandidateId] = useState("");
   const [chatMode, setChatMode] = useState("idle");
   const [expandedSessionGroups, setExpandedSessionGroups] = useState(["draft"]);
@@ -955,6 +966,7 @@ function App() {
     const detail = await response.json();
     setSessionDetail(detail);
     setCurrentSession(detail.session);
+    setCreatorLegalRole(detail.session?.party_1_legal_role || "");
     setMessages(detail.messages || []);
   }
 
@@ -1231,7 +1243,10 @@ function App() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: partyEmail || null }),
+        body: JSON.stringify({
+          email: partyEmail || null,
+          creator_legal_role: creatorLegalRole,
+        }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -1259,6 +1274,10 @@ function App() {
   async function createInvite() {
     if (!partyEmail.trim()) {
       setAppNotice("Введите email второй стороны, чтобы отправить ссылку согласования.");
+      return;
+    }
+    if (!creatorLegalRole) {
+      setAppNotice("Выберите, кем вы выступаете в договоре.");
       return;
     }
     if (isGuest) {
@@ -1568,7 +1587,7 @@ function App() {
                 </button>
               ) : (
                 <form className="review-form" onSubmit={approveReview} ref={reviewFormRef}>
-                  <h2>Данные для подписания</h2>
+                  <h2>Ваши данные · {reviewData.legal_role || "сторона договора"}</h2>
                   <div className="party-type-switch" aria-label="Тип стороны">
                     <button
                       type="button"
@@ -2224,7 +2243,7 @@ function App() {
                           </button>
                         ) : (
                           <form className="review-form owner-signing-form" onSubmit={signAsFirstParty} ref={ownerFormRef}>
-                            <h2>Ваши реквизиты</h2>
+                            <h2>Ваши данные · {currentSession?.party_1_legal_role || "сторона договора"}</h2>
                             <div className="party-type-switch" aria-label="Тип стороны">
                               <button type="button" className={ownerForm.partyType === "individual" ? "active" : ""} onClick={() => setOwnerForm((form) => ({ ...form, partyType: "individual" }))}>Физлицо</button>
                               <button type="button" className={ownerForm.partyType === "business" ? "active" : ""} onClick={() => setOwnerForm((form) => ({ ...form, partyType: "business" }))}>Организация / ИП</button>
@@ -2300,6 +2319,19 @@ function App() {
                             В договоре сейчас стоят игровые данные сторон для удобного чтения.
                             Перед финальной подписью каждая сторона заменит их на свои реальные данные.
                           </p>
+                          <label>
+                            <span>Кем вы выступаете в договоре?</span>
+                            <select
+                              value={creatorLegalRole}
+                              onChange={(event) => setCreatorLegalRole(event.target.value)}
+                              required
+                            >
+                              <option value="">Выберите роль</option>
+                              {getLegalRoleOptions(currentSession, sessionDetail).map((role) => (
+                                <option key={role} value={role}>{role}</option>
+                              ))}
+                            </select>
+                          </label>
                           <input
                             value={partyEmail}
                             onChange={(event) => setPartyEmail(event.target.value)}

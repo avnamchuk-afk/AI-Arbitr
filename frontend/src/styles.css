@@ -746,6 +746,7 @@ button:hover {
 .login-form input:focus,
 .composer textarea:focus,
 .party-form input:focus,
+.party-form select:focus,
 .contract-panel textarea:focus {
   border-color: rgb(64 90 138 / 55%);
   box-shadow: 0 0 0 3px rgb(64 90 138 / 12%);
@@ -1909,11 +1910,21 @@ button:hover {
   grid-column: 1 / -1;
 }
 
-.party-form input {
+.party-form label {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.party-form input,
+.party-form select {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
+  color: var(--ink);
   background: rgb(255 255 255 / 62%);
 }
 

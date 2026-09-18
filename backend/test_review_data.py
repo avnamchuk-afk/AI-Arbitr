@@ -75,6 +75,30 @@ class ReviewPartyDataTest(unittest.TestCase):
         self.assertIn("Гражданин РФ Новый Наймодатель, паспорт серии 9876 № 543210", result)
         self.assertIn("Гражданин РФ Старый Наниматель, паспорт серии 2222 № 222222", result)
 
+    def test_creator_can_be_tenant(self):
+        payload = ReviewApproveRequest(
+            party_type="individual",
+            full_name="Новый Наниматель",
+            passport="9876 543210",
+            phone="+7 999 000-00-00",
+            email="tenant@example.org",
+            personal_data_accepted=True,
+        )
+        contract = (
+            "Гражданин РФ Старый Наймодатель, паспорт серии 1111 № 111111, именуемый в дальнейшем «Наймодатель».\n"
+            "Гражданин РФ Старый Наниматель, паспорт серии 2222 № 222222, именуемый в дальнейшем «Наниматель»."
+        )
+
+        result = apply_ephemeral_party_data(
+            contract,
+            payload,
+            participant_role="party_1",
+            legal_role="Наниматель",
+        )
+
+        self.assertIn("Гражданин РФ Новый Наниматель, паспорт серии 9876 № 543210", result)
+        self.assertIn("Гражданин РФ Старый Наймодатель, паспорт серии 1111 № 111111", result)
+
     def test_housing_requisites_section_uses_confirmed_data(self):
         payload = ReviewApproveRequest(
             party_type="individual",

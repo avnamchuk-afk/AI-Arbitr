@@ -279,9 +279,13 @@ def build_interaction_certificate_pdf(
     )
 
     content_hash = session.final_content_hash or hash_text(final_version.content)
+    party_roles = {
+        "party_1": session.party_1_legal_role or "Наймодатель",
+        "party_2": session.party_2_legal_role or "Наниматель",
+    }
     party_names = {
-        "party_1": extract_party_name(final_version.content, "Наймодатель"),
-        "party_2": extract_party_name(final_version.content, "Наниматель"),
+        key: extract_party_name(final_version.content, legal_role)
+        for key, legal_role in party_roles.items()
     }
     story = [
         para("Справка о факте электронного взаимодействия", styles["AITitle"]),
@@ -295,6 +299,7 @@ def build_interaction_certificate_pdf(
         user_email = participant.user.email if getattr(participant, "user", None) else ""
         story.append(
             para(
+                f"{party_roles.get(participant.role.value, 'Сторона')}: "
                 f"{party_names.get(participant.role.value, 'не указано')} — {user_email}. "
                 f"Подписано: {participant.signed_at or 'не указано'}.",
                 styles["AIBase"],

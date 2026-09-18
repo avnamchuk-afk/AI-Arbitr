@@ -69,6 +69,8 @@ def ensure_runtime_schema() -> None:
             connection.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS invite_expires_at TIMESTAMPTZ"))
             connection.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pending_signing_content TEXT"))
             connection.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS final_content_hash VARCHAR(64)"))
+            connection.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS party_1_legal_role VARCHAR(80)"))
+            connection.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS party_2_legal_role VARCHAR(80)"))
             connection.execute(text("ALTER TABLE contract_participants ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ"))
             connection.execute(text("ALTER TABLE contract_participants ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ"))
             connection.execute(text("ALTER TABLE contract_versions ADD COLUMN IF NOT EXISTS app_version VARCHAR(32)"))
@@ -86,6 +88,8 @@ def ensure_runtime_schema() -> None:
                 ("invite_expires_at", "DATETIME"),
                 ("pending_signing_content", "TEXT"),
                 ("final_content_hash", "VARCHAR(64)"),
+                ("party_1_legal_role", "VARCHAR(80)"),
+                ("party_2_legal_role", "VARCHAR(80)"),
             ):
                 if not any(column[1] == column_name for column in session_columns):
                     connection.execute(text(f"ALTER TABLE sessions ADD COLUMN {column_name} {column_type}"))
@@ -151,6 +155,7 @@ class ChangesRequest(BaseModel):
 class InviteRequest(BaseModel):
     party_name: str = ""
     email: EmailStr | None = None
+    creator_legal_role: str = ""
 
 
 class ReviewApproveRequest(BaseModel):
@@ -990,6 +995,30 @@ def extract_email_from_text(text: str) -> str | None:
     return match.group(0) if match else None
 
 
+def infer_legal_role_pair(title: str, contract_text: str) -> tuple[str, str]:
+    source = f"{title}\n{contract_text}".lower()
+    role_pairs = (
+        (("найм", "нанимател", "жилое помещ"), ("Наймодатель", "Наниматель")),
+        (("аренд", "арендатор"), ("Арендодатель", "Арендатор")),
+        (("купл", "продавец", "покупател"), ("Продавец", "Покупатель")),
+        (("подряд", "подрядчик"), ("Заказчик", "Подрядчик")),
+        (("услуг", "исполнитель", "заказчик", "разработ"), ("Заказчик", "Исполнитель")),
+        (("займ", "заемщик", "займодав"), ("Займодавец", "Заемщик")),
+    )
+    for markers, pair in role_pairs:
+        if any(marker in source for marker in markers):
+            return pair
+    return ("Заказчик", "Исполнитель")
+
+
+def assign_legal_roles(session: ContractSession, contract_text: str, creator_role: str) -> None:
+    first_role, second_role = infer_legal_role_pair(session.title, contract_text)
+    if creator_role not in {first_role, second_role}:
+        raise HTTPException(status_code=400, detail="Выберите свою роль в договоре")
+    session.party_1_legal_role = creator_role
+    session.party_2_legal_role = second_role if creator_role == first_role else first_role
+
+
 def fill_demo_contract_data(contract_text: str, values: dict[str, str]) -> str:
     role = values.get("роль", "").lower()
     full_name = values.get("фио") or values.get("ф.и.о.") or values.get("имя")
@@ -1030,6 +1059,7 @@ def apply_ephemeral_party_data(
     contract_text: str,
     payload: ReviewApproveRequest,
     participant_role: ParticipantRole = ParticipantRole.party_2,
+    legal_role: str | None = None,
 ) -> str:
     # The MVP collects only the passport number, so remove legacy demo-only
     # issuing authority and registration address from every party line.
@@ -1039,7 +1069,7 @@ def apply_ephemeral_party_data(
         contract_text,
         flags=re.IGNORECASE,
     )
-    legal_role = "Наниматель" if participant_role == ParticipantRole.party_2 else "Наймодатель"
+    legal_role = legal_role or ("Наниматель" if participant_role == ParticipantRole.party_2 else "Наймодатель")
     passport_digits = re.sub(r"\D", "", payload.passport)
     lines = updated.splitlines()
     replaced_requisites = False
@@ -1057,8 +1087,9 @@ def apply_ephemeral_party_data(
         replaced_requisites = True
         break
     updated = "\n".join(lines)
-    section_label = "НАНИМАТЕЛЬ" if participant_role == ParticipantRole.party_2 else "НАЙМОДАТЕЛЬ"
-    other_label = "НАЙМОДАТЕЛЬ" if participant_role == ParticipantRole.party_2 else "НАНИМАТЕЛЬ"
+    section_label = legal_role.upper()
+    other_role = "Наймодатель" if legal_role == "Наниматель" else "Наниматель" if legal_role == "Наймодатель" else ""
+    other_label = other_role.upper()
     passport_line = (
         f"Паспорт: серия {passport_digits[:4]} № {passport_digits[4:]}"
         if len(passport_digits) == 10
@@ -1071,7 +1102,8 @@ def apply_ephemeral_party_data(
         f"Телефон: {payload.phone}\n"
         f"E-mail: {payload.email}"
     )
-    section_pattern = rf"{section_label}:\s*\n.*?(?=\n\s*{other_label}:|\n\s*11\.1\.)"
+    section_boundary = rf"\n\s*{other_label}:|" if other_label else ""
+    section_pattern = rf"{section_label}:\s*\n.*?(?={section_boundary}\n\s*11\.1\.|\Z)"
     updated, section_replacements = re.subn(
         section_pattern,
         requisites_block,
@@ -2116,6 +2148,10 @@ def create_invite(
     latest_version = get_latest_version(db, session)
     if latest_version is None:
         raise HTTPException(status_code=400, detail="Нет версии договора для согласования")
+    if payload and payload.email:
+        default_role, _ = infer_legal_role_pair(session.title, latest_version.content)
+        creator_role = payload.creator_legal_role or session.party_1_legal_role or default_role
+        assign_legal_roles(session, latest_version.content, creator_role)
     messages = (
         db.query(Message)
         .filter(Message.session_id == session.id)
@@ -2218,6 +2254,7 @@ def get_review_contract(invite_token: str, db: Session = Depends(get_db)):
         "key_terms": build_key_terms(latest_version.content),
         "approved": party_2.approval_status == ApprovalStatus.approved,
         "party_email": party_2.user.email if party_2.user else "",
+        "legal_role": session.party_2_legal_role or infer_legal_role_pair(session.title, latest_version.content)[1],
         "finalized": session.status == SessionStatus.finalized,
         "download_token": session.download_token,
         "pdf_link": f"{settings.api_base_url}/review/{invite_token}.pdf",
@@ -2295,7 +2332,12 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
             ),
         )
     )
-    temp_content = apply_ephemeral_party_data(latest_version.content, payload, ParticipantRole.party_2)
+    temp_content = apply_ephemeral_party_data(
+        latest_version.content,
+        payload,
+        ParticipantRole.party_2,
+        session.party_2_legal_role,
+    )
     session.pending_signing_content = temp_content
     if owner and not is_guest_user(owner):
         send_signature_progress_notice(owner.email, session.title, f"{settings.app_base_url}/?session={session.id}")
@@ -2929,7 +2971,12 @@ def approve_version(
     apply_user_consent(user)
 
     signing_content = session.pending_signing_content or latest_version.content
-    signing_content = apply_ephemeral_party_data(signing_content, payload, ParticipantRole.party_1)
+    signing_content = apply_ephemeral_party_data(
+        signing_content,
+        payload,
+        ParticipantRole.party_1,
+        session.party_1_legal_role,
+    )
     session.pending_signing_content = signing_content
 
     participant = get_user_participant(db, session, user)
