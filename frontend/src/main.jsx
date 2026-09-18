@@ -682,6 +682,7 @@ function App() {
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const messagesEndRef = useRef(null);
   const reviewFormRef = useRef(null);
+  const ownerFormRef = useRef(null);
   const gestureRef = useRef({ x: 0, y: 0 });
 
   const reviewToken = getReviewTokenFromPath();
@@ -774,6 +775,14 @@ function App() {
     if (!reviewFormOpen) return;
     window.requestAnimationFrame(() => reviewFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [reviewFormOpen]);
+
+  useEffect(() => {
+    if (!ownerSigningOpen) return;
+    window.requestAnimationFrame(() => {
+      ownerFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      ownerFormRef.current?.querySelector("input:not([type='checkbox'])")?.focus({ preventScroll: true });
+    });
+  }, [ownerSigningOpen]);
 
   useEffect(() => {
     localStorage.setItem("ai-arbitr-draft", draft);
@@ -2205,11 +2214,16 @@ function App() {
                         <strong>Вторая сторона подписала договор.</strong>
                         <p>Проверьте финальную редакцию и подпишите договор со своей стороны. После этого будет сформирована PDF-версия с отметками простой электронной подписи.</p>
                         {!ownerSigningOpen ? (
-                          <button onClick={() => setOwnerSigningOpen(true)}>
+                          <button
+                            onClick={() => {
+                              setOwnerSigningOpen(true);
+                              setAppNotice("Заполните реквизиты первой стороны и подтвердите подпись.");
+                            }}
+                          >
                             <Check size={16} /> Подписать со своей стороны
                           </button>
                         ) : (
-                          <form className="review-form owner-signing-form" onSubmit={signAsFirstParty}>
+                          <form className="review-form owner-signing-form" onSubmit={signAsFirstParty} ref={ownerFormRef}>
                             <h2>Ваши реквизиты</h2>
                             <div className="party-type-switch" aria-label="Тип стороны">
                               <button type="button" className={ownerForm.partyType === "individual" ? "active" : ""} onClick={() => setOwnerForm((form) => ({ ...form, partyType: "individual" }))}>Физлицо</button>

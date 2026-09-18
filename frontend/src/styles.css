@@ -467,6 +467,11 @@ button:hover {
   backdrop-filter: var(--blur);
 }
 
+.owner-signing-form {
+  width: 100%;
+  scroll-margin-top: 72px;
+}
+
 .review-form h2 {
   margin: 0;
   font-size: 18px;
