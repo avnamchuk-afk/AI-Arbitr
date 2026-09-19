@@ -11,6 +11,8 @@
 
 **Текущая версия:** `0.9.2-beta`. История релизов ведется в [CHANGELOG.md](CHANGELOG.md). Каждая новая версия договора фиксирует версию сервиса и редакцию использованного шаблона; старые документы без такой метки обозначаются как `legacy`.
 
+Обязательные продуктовые принципы для всех изменений закреплены в [AGENTS.md](AGENTS.md) и [общесистемных правилах интерфейса](docs/product-interface-rules.md).
+
 **Контроль логики:** [дорожная карта](docs/roadmap.md), [архитектура процесса](docs/workflow-architecture.md), [справочник договоров](docs/contract-type-catalog.md), [UX-паттерны](docs/ux-pattern-catalog.md), [схема жизненного цикла](docs/contract-lifecycle.md), [общесистемные правила интерфейса](docs/product-interface-rules.md) и [E2E-протокол проверки](docs/e2e-test-protocol.md). Перед ручным прогоном используется `python3 scripts/lifecycle_preflight.py http://51.250.95.80`.
 
 ---
