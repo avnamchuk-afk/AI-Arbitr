@@ -45,6 +45,12 @@ const DEFAULT_AI_MODEL = "qwen";
 const LAST_SESSION_KEY = "ai-arbitr-current-session";
 const PENDING_INVITE_KEY = "ai-arbitr-pending-invite";
 const CONSENT_VERSION = "1.0";
+
+function apiErrorMessage(detail, fallback) {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (detail && typeof detail.message === "string") return detail.message;
+  return fallback;
+}
 const sessionModeKey = (sessionId) => `ai-arbitr-chat-mode:${sessionId}`;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -314,16 +320,18 @@ const SESSION_FILTERS = [
 ];
 
 function getSessionBucket(session) {
-  if (session.is_deleted) return "deleted";
-  if (session.is_completed) return "closed";
-  if (session.status === "finalized") return "active";
+  const stage = session.workflow?.stage;
+  if (stage === "deleted") return "deleted";
+  if (stage === "completed") return "closed";
+  if (stage === "active" || stage === "dispute") return "active";
+  if (stage === "awaiting_creator") return "my-signature";
+  if (stage === "awaiting_counterparty") return session.my_role === "party_2" ? "incoming" : "sent";
   if (session.my_role === "party_2") return "incoming";
-  if (session.party_2_approved && !session.party_1_approved) return "my-signature";
-  if (session.status === "in_review" || session.invite_token || session.party_2_email) return "sent";
   return "draft";
 }
 
 function getSessionStatusLabel(session) {
+  if (session.workflow?.stage_label) return session.workflow.stage_label;
   const bucket = getSessionBucket(session);
   if (bucket === "draft") return "Черновик";
   if (bucket === "sent") return "На согласовании";
@@ -957,7 +965,7 @@ function App() {
       const response = await fetch(`${API_URL}/review/${token}`);
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setReviewNotice(data.detail || "Ссылка согласования не найдена");
+        setReviewNotice(apiErrorMessage(data.detail, "Ссылка согласования не найдена"));
         setReviewData(null);
         return;
       }
@@ -1005,7 +1013,7 @@ function App() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setReviewNotice(data.detail || "Не удалось подписать договор");
+        setReviewNotice(apiErrorMessage(data.detail, "Не удалось подписать договор"));
         reviewFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }
@@ -1058,7 +1066,7 @@ function App() {
       if (response.ok) {
         setStats(data);
       } else {
-        setToast(data.detail || "Не удалось загрузить статистику");
+        setToast(apiErrorMessage(data.detail, "Не удалось загрузить статистику"));
       }
     } catch {
       setToast("Не удалось загрузить статистику");
@@ -1096,7 +1104,7 @@ function App() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setLoginNotice(data.detail || "Не удалось отправить ссылку. Проверьте email и попробуйте еще раз.");
+        setLoginNotice(apiErrorMessage(data.detail, "Не удалось отправить ссылку. Проверьте email и попробуйте еще раз."));
         return;
       }
       if (endpoint === "/auth/quick-register") {
@@ -1161,7 +1169,7 @@ function App() {
     });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      setAppNotice(data.detail || "Не удалось удалить договор. Попробуйте еще раз.");
+      setAppNotice(apiErrorMessage(data.detail, "Не удалось удалить договор. Попробуйте еще раз."));
       return;
     }
 
@@ -1229,7 +1237,7 @@ function App() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.detail || "Не удалось получить ответ. Попробуйте отправить запрос еще раз.");
+        throw new Error(apiErrorMessage(data.detail, "Не удалось получить ответ. Попробуйте отправить запрос еще раз."));
       }
       if (thinkingTimer) window.clearInterval(thinkingTimer);
       const minThinkingMs = isInitialContract ? MIN_INITIAL_THINKING_MS : MIN_REGULAR_THINKING_MS;
@@ -1325,7 +1333,7 @@ function App() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setAppNotice(data.detail || "Не удалось отправить ссылку согласования.");
+        setAppNotice(apiErrorMessage(data.detail, "Не удалось отправить ссылку согласования."));
         return false;
       }
       setInviteLink(data.invite_link);
@@ -1518,7 +1526,7 @@ function App() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setAppNotice(data.detail || "Не удалось подписать договор.");
+        setAppNotice(apiErrorMessage(data.detail, "Не удалось подписать договор."));
         return;
       }
       setOwnerSigningOpen(false);
@@ -1542,7 +1550,7 @@ function App() {
       credentials: "include",
     });
     const data = await response.json().catch(() => ({}));
-    setAppNotice(response.ok ? data.message : data.detail || "Не удалось отметить исполнение.");
+    setAppNotice(response.ok ? data.message : apiErrorMessage(data.detail, "Не удалось отметить исполнение."));
     loadSession(currentSession.id);
   }
 

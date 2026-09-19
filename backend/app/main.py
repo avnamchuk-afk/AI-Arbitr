@@ -47,6 +47,13 @@ from app.services.privacy import contains_passport_like_data
 from app.services.prompts import CONTRACT_SYSTEM_PROMPT, SIMPLE_CONTRACT_SYSTEM_PROMPT, build_dispute_prompt
 from app.services.yandex_gpt import YandexGPTError, ask_yandex_gpt
 from app.version import APP_VERSION, identify_contract_template
+from app.workflows.contract import (
+    ContractAction,
+    WorkflowContext,
+    action_is_allowed,
+    describe_workflow,
+    workflow_catalog,
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -1514,6 +1521,11 @@ def health():
     return {"status": "ok", "version": APP_VERSION}
 
 
+@app.get("/workflow/catalog")
+def get_workflow_catalog():
+    return workflow_catalog()
+
+
 @app.get("/stats")
 def stats(db: Session = Depends(get_db)):
     real_users = db.query(User).filter(~User.email.like(f"%{GUEST_EMAIL_SUFFIX}")).count()
@@ -1981,6 +1993,11 @@ def list_contract_contacts(
 @app.get("/sessions/{session_id}")
 def get_session(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = get_accessible_session(db, session_id, user)
+    current_participant = next(
+        (participant for participant in session.participants if participant.user_id == user.id),
+        None,
+    )
+    actor_role = current_participant.role.value if current_participant else "party_1"
     latest_version = get_latest_version(db, session)
     messages = (
         db.query(Message)
@@ -1995,6 +2012,7 @@ def get_session(session_id: str, user: User = Depends(get_current_user), db: Ses
         "latest_version": latest_version,
         "key_terms": build_key_terms(latest_version.content) if latest_version else [],
         "messages": messages,
+        "workflow": workflow_for(db, session, actor_role),
     }
 
 
@@ -2005,10 +2023,7 @@ def delete_session(session_id: str, user: User = Depends(get_current_user), db: 
         raise HTTPException(status_code=404, detail="Сессия не найдена")
     if session.owner_user_id != user.id:
         raise HTTPException(status_code=403, detail="Удалить договор может только его создатель")
-    if session.status == SessionStatus.finalized or any(
-        participant.approval_status == ApprovalStatus.approved for participant in session.participants
-    ):
-        raise HTTPException(status_code=400, detail="Подписанные договоры защищены от удаления")
+    require_workflow_action(db, session, "party_1", ContractAction.DELETE_CONTRACT)
 
     session.is_deleted = True
     db.commit()
@@ -2036,6 +2051,58 @@ def get_latest_version(db: Session, session: ContractSession) -> ContractVersion
         .filter(ContractVersion.session_id == session.id)
         .order_by(ContractVersion.version_number.desc())
         .first()
+    )
+
+
+def build_workflow_context(db: Session, session: ContractSession) -> WorkflowContext:
+    participants = list(session.participants)
+    party_1 = next((item for item in participants if item.role == ParticipantRole.party_1), None)
+    party_2 = next((item for item in participants if item.role == ParticipantRole.party_2), None)
+    has_version = db.query(ContractVersion.id).filter(ContractVersion.session_id == session.id).first() is not None
+    invite_sent = (
+        db.query(Message.id)
+        .filter(Message.session_id == session.id, Message.content.like("VERSION_SENT|%"))
+        .first()
+        is not None
+    )
+    dispute_opened = (
+        db.query(Message.id)
+        .filter(Message.session_id == session.id, Message.content.like("DISPUTE_OPENED|%"))
+        .first()
+        is not None
+    )
+    return WorkflowContext(
+        has_version=has_version,
+        invite_sent=invite_sent,
+        party_1_approved=party_1 is not None and party_1.approval_status == ApprovalStatus.approved,
+        party_2_approved=party_2 is not None and party_2.approval_status == ApprovalStatus.approved,
+        finalized=session.status == SessionStatus.finalized,
+        dispute_opened=dispute_opened,
+        completed=session.is_completed,
+        deleted=session.is_deleted,
+    )
+
+
+def workflow_for(db: Session, session: ContractSession, actor_role: str) -> dict:
+    return describe_workflow(build_workflow_context(db, session), actor_role)
+
+
+def require_workflow_action(
+    db: Session,
+    session: ContractSession,
+    actor_role: str,
+    action: ContractAction,
+) -> None:
+    context = build_workflow_context(db, session)
+    if action_is_allowed(context, actor_role, action):
+        return
+    workflow = describe_workflow(context, actor_role)
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "message": f"Действие «{action.value}» недоступно на этапе «{workflow['stage_label']}»",
+            "workflow": workflow,
+        },
     )
 
 
@@ -2095,6 +2162,7 @@ def serialize_session_summary(db: Session, session: ContractSession, user: User)
     current_participant = next((participant for participant in participants if participant.user_id == user.id), None)
     party_1 = next((participant for participant in participants if participant.role == ParticipantRole.party_1), None)
     party_2 = next((participant for participant in participants if participant.role == ParticipantRole.party_2), None)
+    actor_role = current_participant.role.value if current_participant else "party_1"
     return {
         "id": session.id,
         "owner_user_id": session.owner_user_id,
@@ -2111,6 +2179,7 @@ def serialize_session_summary(db: Session, session: ContractSession, user: User)
         "party_1_approved": party_1.approval_status == ApprovalStatus.approved if party_1 else False,
         "party_2_approved": party_2.approval_status == ApprovalStatus.approved if party_2 else False,
         "party_2_email": party_2.user.email if party_2 and party_2.user and not is_guest_user(party_2.user) else "",
+        "workflow": workflow_for(db, session, actor_role),
     }
 
 
@@ -2304,6 +2373,7 @@ def create_invite(
         raise HTTPException(status_code=403, detail="Приглашение может создать только Сторона 1")
     if is_guest_user(user):
         raise HTTPException(status_code=403, detail="Зарегистрируйтесь по email, чтобы отправить ссылку согласования")
+    require_workflow_action(db, session, "party_1", ContractAction.SEND_INVITE)
     if session.invite_token is None:
         session.invite_token = uuid.uuid4()
     if session.invite_expires_at is None or session.invite_expires_at < now_utc():
@@ -2362,7 +2432,13 @@ def create_invite(
         )
         upsert_contract_analytics_snapshot(db, session)
         db.commit()
-    return {"invite_link": invite_link, "sent": sent, "sent_to": str(payload.email) if payload and payload.email else None, "copy_to": user.email if sent else None}
+    return {
+        "invite_link": invite_link,
+        "sent": sent,
+        "sent_to": str(payload.email) if payload and payload.email else None,
+        "copy_to": user.email if sent else None,
+        "workflow": workflow_for(db, session, "party_1"),
+    }
 
 
 def get_session_by_review_token(db: Session, invite_token: str) -> ContractSession:
@@ -2423,6 +2499,7 @@ def get_review_contract(invite_token: str, db: Session = Depends(get_db)):
         "finalized": session.status == SessionStatus.finalized,
         "download_token": session.download_token,
         "pdf_link": f"{settings.api_base_url}/review/{invite_token}.pdf",
+        "workflow": workflow_for(db, session, "party_2"),
     }
 
 
@@ -2457,6 +2534,7 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
     owner = db.get(User, session.owner_user_id)
     if session.status == SessionStatus.finalized:
         return {"finalized": True, "owner_email": owner.email if owner else None}
+    require_workflow_action(db, session, "party_2", ContractAction.SIGN_COUNTERPARTY)
 
     participant = (
         db.query(ContractParticipant)
@@ -2523,6 +2601,7 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
         "finalized": False,
         "party_two_signed": True,
         "owner_email": owner.email if owner else None,
+        "workflow": workflow_for(db, session, "party_2"),
     }
 
 
@@ -3115,8 +3194,8 @@ def create_version(
     db: Session = Depends(get_db),
 ):
     session = get_accessible_session(db, session_id, user)
-    if session.status == SessionStatus.finalized:
-        raise HTTPException(status_code=400, detail="Финализированный договор нельзя изменить")
+    participant = get_user_participant(db, session, user)
+    require_workflow_action(db, session, participant.role.value, ContractAction.CREATE_VERSION)
 
     version = save_contract_version(db, session, payload.content)
     db.commit()
@@ -3137,6 +3216,7 @@ def approve_version(
         raise HTTPException(status_code=400, detail="Нет версии договора для согласования")
     if session.owner_user_id != user.id:
         raise HTTPException(status_code=403, detail="Финальную подпись ставит создатель договора")
+    require_workflow_action(db, session, "party_1", ContractAction.SIGN_CREATOR)
     require_unified_consent(
         payload.personal_data_accepted,
         payload.service_rules_accepted,
@@ -3228,15 +3308,24 @@ def approve_version(
         finally:
             session.pending_signing_content = None
             db.commit()
-    return {"finalized": both_approved, "status": session.status}
+    return {
+        "finalized": both_approved,
+        "status": session.status,
+        "workflow": workflow_for(db, session, "party_1"),
+    }
 
 
 @app.post("/sessions/{session_id}/complete")
 def complete_contract(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = get_accessible_session(db, session_id, user)
-    if session.status != SessionStatus.finalized:
-        raise HTTPException(status_code=400, detail="Отметить исполнение можно только по подписанному договору")
     participant = get_user_participant(db, session, user)
+    if session.is_completed:
+        return {
+            "completed": True,
+            "message": "Договор уже закрыт",
+            "workflow": workflow_for(db, session, participant.role.value),
+        }
+    require_workflow_action(db, session, participant.role.value, ContractAction.CONFIRM_COMPLETION)
     if participant.completed_at is not None:
         return {
             "completed": session.is_completed,
@@ -3245,6 +3334,7 @@ def complete_contract(session_id: str, user: User = Depends(get_current_user), d
                 if session.is_completed
                 else "Ваше подтверждение уже сохранено. Ожидается подтверждение второй стороны"
             ),
+            "workflow": workflow_for(db, session, participant.role.value),
         }
     participant.completed_at = now_utc()
     both_confirmed = all(item.user_id is not None and item.completed_at is not None for item in session.participants)
@@ -3276,6 +3366,7 @@ def complete_contract(session_id: str, user: User = Depends(get_current_user), d
             if both_confirmed
             else "Ваше подтверждение сохранено. Для закрытия требуется подтверждение второй стороны"
         ),
+        "workflow": workflow_for(db, session, participant.role.value),
     }
 
 
