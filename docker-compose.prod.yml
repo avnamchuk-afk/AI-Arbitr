@@ -21,6 +21,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./deploy/config.js:/usr/share/nginx/html/config.js:ro
+      - ../ai-arbitr-assets/fonts:/usr/share/nginx/html/fonts:ro
     depends_on:
       - backend
 

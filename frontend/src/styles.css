@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "ALS Staromoskovsky";
+  src: url("/fonts/ALSStaromoskovsky-Regular_3.1.otf") format("opentype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #1c2430;
@@ -12,6 +20,15 @@
   --line: rgb(126 148 160 / 28%);
   --shadow: 0 18px 54px rgb(23 34 47 / 10%);
   --blur: blur(18px) saturate(1.25);
+}
+
+h1,
+h2,
+.brand-word,
+.landing-brand strong,
+.knowledge-brand strong {
+  font-family: "ALS Staromoskovsky", Inter, system-ui, sans-serif;
+  font-weight: 400;
 }
 
 * {
@@ -895,6 +912,49 @@ button:hover {
   display: grid;
   gap: 6px;
   padding-left: 18px;
+}
+
+.technical-section {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.technical-section h2,
+.technical-section p {
+  margin: 0;
+}
+
+.technical-section h2 {
+  font-size: 16px;
+}
+
+.technical-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.technical-list div {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.technical-list dt {
+  color: var(--muted);
+}
+
+.technical-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.technical-list a {
+  color: var(--accent-strong);
 }
 
 .team-section {

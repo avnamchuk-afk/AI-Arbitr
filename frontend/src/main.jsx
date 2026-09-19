@@ -2023,6 +2023,31 @@ function App() {
               <li>После вопросов можно добавить краткую или расширенную редакцию условия.</li>
               <li>Финальный договор и справка электронного взаимодействия уходят сторонам на email.</li>
             </ul>
+            <section className="technical-section">
+              <h2>Техническое описание</h2>
+              <dl className="technical-list">
+                <div>
+                  <dt>Исходный код</dt>
+                  <dd><a href="https://github.com/avnamchuk-afk/AI-Arbitr" target="_blank" rel="noreferrer">GitHub · MIT License</a></dd>
+                </div>
+                <div>
+                  <dt>Инфраструктура</dt>
+                  <dd>Yandex Cloud · Docker · Nginx · PostgreSQL</dd>
+                </div>
+                <div>
+                  <dt>Нейросети</dt>
+                  <dd>YandexGPT 5.1 Pro и Qwen 2.5 7B Instruct через Foundation Models API</dd>
+                </div>
+                <div>
+                  <dt>Шрифт</dt>
+                  <dd>ALS Staromoskovsky Regular 3.1 · Студия Артемия Лебедева · бессрочная лицензия владельца проекта</dd>
+                </div>
+                <div>
+                  <dt>Версия</dt>
+                  <dd>{APP_VERSION}</dd>
+                </div>
+              </dl>
+            </section>
             <section className="team-section">
               <h2>Команда проекта</h2>
               <p>Технологии, право, финансы и поведенческая психология в одной команде.</p>
