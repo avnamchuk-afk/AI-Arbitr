@@ -2172,8 +2172,8 @@ function App() {
         </div>
       )}
       <aside className={sidebarOpen ? "sidebar open" : "sidebar"}>
-        <div className="account">
-          {!isGuest && <strong>{email}</strong>}
+        <div className={isGuest ? "account guest-account" : "account authenticated-account"}>
+          {!isGuest && <strong title={email}>{email}</strong>}
           {isGuest ? (
             <button
               onClick={() => {
@@ -2188,6 +2188,9 @@ function App() {
             </button>
           ) : (
             <button
+              className="logout-button"
+              aria-label="Выйти из аккаунта"
+              title="Выйти"
               onClick={() => {
                 localStorage.removeItem(LAST_SESSION_KEY);
                 window.history.replaceState({}, "", "/");
@@ -2205,7 +2208,7 @@ function App() {
                   });
               }}
             >
-              <LogOut size={16} /> Выход
+              <LogOut size={17} aria-hidden="true" />
             </button>
           )}
         </div>
