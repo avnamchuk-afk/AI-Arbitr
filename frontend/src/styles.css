@@ -1206,6 +1206,18 @@ button:hover {
   background: rgb(255 255 255 / 44%);
 }
 
+.session-search-wrap {
+  position: relative;
+  z-index: 4;
+}
+
+.session-search-wrap .suggestion-list {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  left: 0;
+}
+
 .session-search input {
   width: 100%;
   min-width: 0;
@@ -2003,6 +2015,16 @@ button:hover {
   background: rgb(64 90 138 / 88%);
 }
 
+.composer-shell {
+  position: relative;
+  width: min(920px, 100%);
+  margin: 0 auto;
+}
+
+.composer-shell > .suggestion-list {
+  margin-bottom: 6px;
+}
+
 .composer {
   width: min(920px, 100%);
   margin: 0 auto;
@@ -2011,6 +2033,60 @@ button:hover {
   gap: 10px;
   padding-top: 10px;
   border-top: 1px solid rgb(126 148 160 / 22%);
+}
+
+.suggestion-list {
+  display: grid;
+  gap: 2px;
+  max-height: min(280px, 38vh);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 14px 34px rgb(28 36 48 / 14%);
+  backdrop-filter: var(--blur);
+}
+
+.suggestion-list > small {
+  padding: 4px 8px 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.suggestion-list > button {
+  min-width: 0;
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: var(--ink);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+}
+
+.suggestion-list > button:hover,
+.suggestion-list > button.active {
+  background: rgb(64 90 138 / 10%);
+}
+
+.suggestion-list > button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestion-list > button em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
 }
 
 .composer textarea {

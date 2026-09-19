@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import LandingPage from "./LandingPage.jsx";
 import KnowledgeBase from "./KnowledgeBase.jsx";
+import { FORM_HINTS, getChatSuggestions, getSessionSearchSuggestions } from "./catalogs/suggestions.js";
 import { APP_VERSION, APP_VERSION_SHORT } from "./version.js";
 import "./styles.css";
 
@@ -628,6 +629,34 @@ function MessageActions({ message, onToast }) {
   );
 }
 
+function SuggestionList({ items, activeIndex = -1, onSelect, label }) {
+  if (!items.length) return null;
+  return (
+    <div className="suggestion-list" role="listbox" aria-label={label}>
+      <small>{label}</small>
+      {items.map((item, index) => {
+        const value = typeof item === "string" ? item : item.title;
+        const meta = typeof item === "string" ? "" : getSessionStatusLabel(item);
+        return (
+          <button
+            key={typeof item === "string" ? item : item.id}
+            type="button"
+            role="option"
+            aria-selected={index === activeIndex}
+            className={index === activeIndex ? "active" : ""}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onSelect(item)}
+          >
+            <Search size={14} />
+            <span>{value}</span>
+            {meta && <em>{meta}</em>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function App() {
   const [email, setEmail] = useState("");
   const [authMode, setAuthMode] = useState("register");
@@ -670,6 +699,9 @@ function App() {
   const [chatMode, setChatMode] = useState("idle");
   const [expandedSessionGroups, setExpandedSessionGroups] = useState(["draft"]);
   const [sessionSearch, setSessionSearch] = useState("");
+  const [sessionSearchFocused, setSessionSearchFocused] = useState(false);
+  const [composerFocused, setComposerFocused] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [questionResolved, setQuestionResolved] = useState(false);
   const [authPromptTitle, setAuthPromptTitle] = useState("Сохранить историю");
   const [authPromptCopy, setAuthPromptCopy] = useState(
@@ -1558,6 +1590,17 @@ function App() {
 
   const hasContractVersion = Boolean(sessionDetail?.latest_version);
   const isFinalized = currentSession?.status === "finalized";
+  const chatSuggestions = composerFocused && !thinking
+    ? getChatSuggestions({
+        query: draft,
+        mode: chatMode,
+        hasVersion: hasContractVersion,
+        contractTypeId: sessionDetail?.contract_type?.id,
+      })
+    : [];
+  const sessionSearchSuggestions = sessionSearchFocused
+    ? getSessionSearchSuggestions(sessions, sessionSearch)
+    : [];
   const normalizedSessionSearch = sessionSearch.trim().toLowerCase();
   const matchesSessionSearch = (session) => {
     if (!normalizedSessionSearch) return true;
@@ -1699,7 +1742,7 @@ function App() {
                     <input
                       value={reviewForm.organizationName}
                       onChange={(event) => setReviewForm((form) => ({ ...form, organizationName: event.target.value }))}
-                      placeholder="Наименование организации или ИП"
+                      placeholder={FORM_HINTS.organization}
                       autoComplete="organization"
                       required
                     />
@@ -1707,7 +1750,7 @@ function App() {
                   <input
                     value={reviewForm.fullName}
                     onChange={(event) => setReviewForm((form) => ({ ...form, fullName: event.target.value }))}
-                    placeholder={reviewForm.partyType === "business" ? "ФИО подписанта" : "Фамилия Имя Отчество"}
+                    placeholder={reviewForm.partyType === "business" ? FORM_HINTS.signerName : FORM_HINTS.fullName}
                     autoComplete="name"
                     required
                   />
@@ -1715,7 +1758,7 @@ function App() {
                   <input
                     value={reviewForm.passport}
                     onChange={(event) => setReviewForm((form) => ({ ...form, passport: event.target.value }))}
-                    placeholder="Паспорт: 0000 000000"
+                    placeholder={FORM_HINTS.passport}
                     autoComplete="off"
                     inputMode="numeric"
                     pattern="[0-9]{4} ?[0-9]{6}"
@@ -1726,7 +1769,7 @@ function App() {
                       <input
                         value={reviewForm.inn}
                         onChange={(event) => setReviewForm((form) => ({ ...form, inn: event.target.value }))}
-                        placeholder="ИНН"
+                        placeholder={FORM_HINTS.inn}
                         inputMode="numeric"
                         pattern="[0-9]{10}|[0-9]{12}"
                         required
@@ -1734,7 +1777,7 @@ function App() {
                       <input
                         value={reviewForm.ogrn}
                         onChange={(event) => setReviewForm((form) => ({ ...form, ogrn: event.target.value }))}
-                        placeholder="ОГРН или ОГРНИП"
+                        placeholder={FORM_HINTS.ogrn}
                         inputMode="numeric"
                         pattern="[0-9]{13}|[0-9]{15}"
                         required
@@ -1744,13 +1787,13 @@ function App() {
                   <input
                     value={reviewForm.phone}
                     onChange={(event) => setReviewForm((form) => ({ ...form, phone: event.target.value }))}
-                    placeholder="Телефон"
+                    placeholder={FORM_HINTS.phone}
                     autoComplete="tel"
                     required
                   />
                   <input
                     value={reviewForm.email}
-                    placeholder="email@example.com"
+                    placeholder={FORM_HINTS.email}
                     autoComplete="email"
                     readOnly
                     aria-readonly="true"
@@ -1807,7 +1850,7 @@ function App() {
               Вход
             </button>
           </div>
-          <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="email@example.com" />
+          <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder={FORM_HINTS.email} />
           {authMode === "register" && (
             <label className="checkbox-row">
               <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
@@ -1877,7 +1920,7 @@ function App() {
                 </div>
               </div>
             )}
-            <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="email@example.com" />
+            <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder={FORM_HINTS.email} />
             <label className="checkbox-row">
               <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
               <ConsentText />
@@ -2177,14 +2220,31 @@ function App() {
         <button className="new-contract" onClick={createSession}>
           <Plus size={18} /> Новый договор
         </button>
-        <label className="session-search">
-          <Search size={15} />
-          <input
-            value={sessionSearch}
-            onChange={(event) => setSessionSearch(event.target.value)}
-            placeholder="Поиск по договорам"
+        <div className="session-search-wrap">
+          <label className="session-search">
+            <Search size={15} />
+            <input
+              value={sessionSearch}
+              onChange={(event) => setSessionSearch(event.target.value)}
+              onFocus={() => setSessionSearchFocused(true)}
+              onBlur={() => setSessionSearchFocused(false)}
+              placeholder={FORM_HINTS.sessionSearch}
+              autoComplete="off"
+            />
+          </label>
+          <SuggestionList
+            items={sessionSearchSuggestions}
+            label="Ваши договоры"
+            onSelect={(session) => {
+              setCurrentSession(session);
+              setSessionSearch("");
+              setSessionSearchFocused(false);
+              setInviteLink("");
+              setDeleteCandidateId("");
+              setSidebarOpen(false);
+            }}
           />
-        </label>
+        </div>
         <div className="session-tabs" role="list" aria-label="Список договоров">
           {SESSION_FILTERS.map((filter) => {
             const visibleCount = sessionsByGroup[filter.id].length;
@@ -2373,18 +2433,18 @@ function App() {
                               <button type="button" className={ownerForm.partyType === "business" ? "active" : ""} onClick={() => setOwnerForm((form) => ({ ...form, partyType: "business" }))}>Организация / ИП</button>
                             </div>
                             {ownerForm.partyType === "business" && (
-                              <input value={ownerForm.organizationName} onChange={(event) => setOwnerForm((form) => ({ ...form, organizationName: event.target.value }))} placeholder="Наименование организации или ИП" autoComplete="organization" required />
+                              <input value={ownerForm.organizationName} onChange={(event) => setOwnerForm((form) => ({ ...form, organizationName: event.target.value }))} placeholder={FORM_HINTS.organization} autoComplete="organization" required />
                             )}
-                            <input value={ownerForm.fullName} onChange={(event) => setOwnerForm((form) => ({ ...form, fullName: event.target.value }))} placeholder={ownerForm.partyType === "business" ? "ФИО подписанта" : "Фамилия Имя Отчество"} autoComplete="name" required />
+                            <input value={ownerForm.fullName} onChange={(event) => setOwnerForm((form) => ({ ...form, fullName: event.target.value }))} placeholder={ownerForm.partyType === "business" ? FORM_HINTS.signerName : FORM_HINTS.fullName} autoComplete="name" required />
                             {ownerForm.partyType === "individual" ? (
-                              <input value={ownerForm.passport} onChange={(event) => setOwnerForm((form) => ({ ...form, passport: event.target.value }))} placeholder="Паспорт: 0000 000000" autoComplete="off" inputMode="numeric" pattern="[0-9]{4} ?[0-9]{6}" required />
+                              <input value={ownerForm.passport} onChange={(event) => setOwnerForm((form) => ({ ...form, passport: event.target.value }))} placeholder={FORM_HINTS.passport} autoComplete="off" inputMode="numeric" pattern="[0-9]{4} ?[0-9]{6}" required />
                             ) : (
                               <>
-                                <input value={ownerForm.inn} onChange={(event) => setOwnerForm((form) => ({ ...form, inn: event.target.value }))} placeholder="ИНН" inputMode="numeric" pattern="[0-9]{10}|[0-9]{12}" required />
-                                <input value={ownerForm.ogrn} onChange={(event) => setOwnerForm((form) => ({ ...form, ogrn: event.target.value }))} placeholder="ОГРН или ОГРНИП" inputMode="numeric" pattern="[0-9]{13}|[0-9]{15}" required />
+                                <input value={ownerForm.inn} onChange={(event) => setOwnerForm((form) => ({ ...form, inn: event.target.value }))} placeholder={FORM_HINTS.inn} inputMode="numeric" pattern="[0-9]{10}|[0-9]{12}" required />
+                                <input value={ownerForm.ogrn} onChange={(event) => setOwnerForm((form) => ({ ...form, ogrn: event.target.value }))} placeholder={FORM_HINTS.ogrn} inputMode="numeric" pattern="[0-9]{13}|[0-9]{15}" required />
                               </>
                             )}
-                            <input value={ownerForm.phone} onChange={(event) => setOwnerForm((form) => ({ ...form, phone: event.target.value }))} placeholder="Телефон" autoComplete="tel" required />
+                            <input value={ownerForm.phone} onChange={(event) => setOwnerForm((form) => ({ ...form, phone: event.target.value }))} placeholder={FORM_HINTS.phone} autoComplete="tel" required />
                             <input value={email} autoComplete="email" readOnly aria-readonly="true" />
                             <label className="checkbox-row">
                               <input type="checkbox" checked={ownerForm.accepted} onChange={(event) => setOwnerForm((form) => ({ ...form, accepted: event.target.checked }))} required />
@@ -2462,7 +2522,7 @@ function App() {
                           <input
                             value={partyEmail}
                             onChange={(event) => setPartyEmail(event.target.value)}
-                            placeholder="email второй стороны"
+                            placeholder={FORM_HINTS.counterpartyEmail}
                             type="email"
                             autoComplete="email"
                             list="contract-email-suggestions"
@@ -2536,23 +2596,65 @@ function App() {
                 <div ref={messagesEndRef} />
               </div>
             </div>
-            <div className="composer">
-              <textarea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    sendMessage();
-                  }
+            <div className="composer-shell">
+              <SuggestionList
+                items={chatSuggestions}
+                activeIndex={activeSuggestionIndex}
+                label={draft.trim() ? "Подходящие запросы" : "Популярные запросы"}
+                onSelect={(value) => {
+                  setDraft(value);
+                  setActiveSuggestionIndex(-1);
                 }}
-                placeholder={composerPlaceholder}
               />
-              <button onClick={sendMessage} aria-label="Отправить">
-                <Send size={20} />
-              </button>
+              <div className="composer">
+                <textarea
+                  value={draft}
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    setActiveSuggestionIndex(-1);
+                  }}
+                  onFocus={() => setComposerFocused(true)}
+                  onBlur={() => {
+                    setComposerFocused(false);
+                    setActiveSuggestionIndex(-1);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowDown" && chatSuggestions.length) {
+                      event.preventDefault();
+                      setActiveSuggestionIndex((index) => (index + 1) % chatSuggestions.length);
+                      return;
+                    }
+                    if (event.key === "ArrowUp" && chatSuggestions.length) {
+                      event.preventDefault();
+                      setActiveSuggestionIndex((index) => (index <= 0 ? chatSuggestions.length - 1 : index - 1));
+                      return;
+                    }
+                    if ((event.key === "Tab" || event.key === "Enter") && activeSuggestionIndex >= 0) {
+                      event.preventDefault();
+                      setDraft(chatSuggestions[activeSuggestionIndex]);
+                      setActiveSuggestionIndex(-1);
+                      return;
+                    }
+                    if (event.key === "Escape") {
+                      setComposerFocused(false);
+                      setActiveSuggestionIndex(-1);
+                      return;
+                    }
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  placeholder={composerPlaceholder}
+                  aria-autocomplete="list"
+                  aria-expanded={chatSuggestions.length > 0}
+                />
+                <button onClick={sendMessage} aria-label="Отправить">
+                  <Send size={20} />
+                </button>
+              </div>
+              <small className="hint">{composerHint}. Enter для отправки</small>
             </div>
-            <small className="hint">{composerHint}. Enter для отправки</small>
           </div>
         )}
       </section>
