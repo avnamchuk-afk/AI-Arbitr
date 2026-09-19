@@ -40,9 +40,9 @@ class ReviewPartyDataTest(unittest.TestCase):
         self.assertLess(result.index("2.2."), result.index("3. ПЛАТА"))
 
     def test_unified_consent_requires_all_parts(self):
-        require_unified_consent(True, True, True, "1.1")
+        require_unified_consent(True, True, True, "1.0")
         with self.assertRaises(HTTPException):
-            require_unified_consent(True, False, True, "1.1")
+            require_unified_consent(True, False, True, "1.0")
         with self.assertRaises(HTTPException):
             require_unified_consent(True, True, True, "0.9")
 

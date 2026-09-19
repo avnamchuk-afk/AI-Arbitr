@@ -46,9 +46,7 @@ const DEMO_REVIEW_PASSPORT = "1111 111111";
 const DEFAULT_AI_MODEL = "qwen";
 const LAST_SESSION_KEY = "ai-arbitr-current-session";
 const PENDING_INVITE_KEY = "ai-arbitr-pending-invite";
-const REVIEW_FORM_DRAFT_PREFIX = "ai-arbitr-review-form:";
-const OWNER_FORM_DRAFT_PREFIX = "ai-arbitr-owner-form:";
-const CONSENT_VERSION = "1.1";
+const CONSENT_VERSION = "1.0";
 
 function apiErrorMessage(detail, fallback) {
   if (typeof detail === "string" && detail.trim()) return detail;
@@ -56,19 +54,6 @@ function apiErrorMessage(detail, fallback) {
   return fallback;
 }
 const sessionModeKey = (sessionId) => `ai-arbitr-chat-mode:${sessionId}`;
-const reviewFormDraftKey = (token) => `${REVIEW_FORM_DRAFT_PREFIX}${token}`;
-const ownerFormDraftKey = (sessionId) => `${OWNER_FORM_DRAFT_PREFIX}${sessionId}`;
-
-function readSessionDraft(key, fallback) {
-  if (!key) return fallback;
-  try {
-    const saved = JSON.parse(sessionStorage.getItem(key) || "null");
-    return saved && typeof saved === "object" ? { ...fallback, ...saved } : fallback;
-  } catch {
-    sessionStorage.removeItem(key);
-    return fallback;
-  }
-}
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -87,7 +72,6 @@ const PRIVACY_SECTIONS = [
     items: [
       "2.1. Данные, собираемые автоматически: IP-адрес устройства; информация о браузере; отпечаток браузера; дата и время доступа к Сервису; Session ID; хэш-суммы документов; логи действий пользователя.",
       "2.2. Данные, предоставляемые пользователем добровольно (эфемерная обработка): адрес электронной почты; номер телефона; серия, номер паспорта; ИНН (для ИП, МСП).",
-      "2.2.1. До завершения подписи незавершенный черновик реквизитов может временно храниться только в sessionStorage текущей вкладки браузера, чтобы восстановить форму после выгрузки вкладки из памяти. Черновик не передается на сервер до нажатия кнопки подписания, удаляется после успешной подписи и прекращает существовать при закрытии вкладки.",
       "2.3. Данные, сохраняемые в системе после заключения договора: UID сторон; хэш адреса электронной почты; маскированные данные; технические логи.",
       "2.4. Сервис использует строго необходимые cookies для сессии, авторизации, безопасности и восстановления открытого договора. Рекламные cookies не используются.",
       "Важно: указанный объем данных сам по себе не образует пакет данных, позволяющий однозначно идентифицировать личность пользователя без сопоставления с информацией, которой стороны обменялись самостоятельно.",
@@ -563,7 +547,7 @@ function PrivacyPage() {
       <article className="privacy-shell">
         <header className="privacy-header">
           <LogoMark compact />
-          <p>Версия 1.4 от 19 сентября 2026 г.</p>
+          <p>Версия 1.3 от 18 сентября 2026 г.</p>
           <h1>Политика конфиденциальности сервиса Ai-arbitr</h1>
         </header>
         {PRIVACY_SECTIONS.map((section) => (
@@ -575,7 +559,7 @@ function PrivacyPage() {
           </section>
         ))}
         <footer className="privacy-footer">
-          <p>Дата последнего обновления: 19 сентября 2026 г.</p>
+          <p>Дата последнего обновления: 18 сентября 2026 г.</p>
           <strong>Ai-arbitr — конфиденциальность по дизайну.</strong>
           <a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a>
           <a href="/">Вернуться в сервис</a>
@@ -675,7 +659,6 @@ function SuggestionList({ items, activeIndex = -1, onSelect, label }) {
 }
 
 function App() {
-  const reviewToken = getReviewTokenFromPath();
   const [email, setEmail] = useState("");
   const [authMode, setAuthMode] = useState("register");
   const [userId, setUserId] = useState("");
@@ -726,7 +709,7 @@ function App() {
   );
   const [afterAuthAction, setAfterAuthAction] = useState("");
   const [reviewData, setReviewData] = useState(null);
-  const defaultReviewForm = {
+  const [reviewForm, setReviewForm] = useState({
     partyType: "individual",
     fullName: "Иванов Иван Иванович",
     passport: DEMO_REVIEW_PASSPORT,
@@ -736,20 +719,15 @@ function App() {
     organizationName: "",
     email: "",
     accepted: storedConsentVersion === CONSENT_VERSION,
-  };
-  const [reviewForm, setReviewForm] = useState(() =>
-    readSessionDraft(reviewToken ? reviewFormDraftKey(reviewToken) : "", defaultReviewForm)
-  );
+  });
   const [reviewNotice, setReviewNotice] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
-  const [reviewFormOpen, setReviewFormOpen] = useState(() =>
-    Boolean(reviewToken && readSessionDraft(reviewFormDraftKey(reviewToken), {}).formOpen)
-  );
+  const [reviewFormOpen, setReviewFormOpen] = useState(false);
   const [reviewConfirmation, setReviewConfirmation] = useState(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [ownerSigningOpen, setOwnerSigningOpen] = useState(false);
   const [ownerSubmitting, setOwnerSubmitting] = useState(false);
-  const defaultOwnerForm = {
+  const [ownerForm, setOwnerForm] = useState({
     partyType: "individual",
     fullName: "Петров Петр Петрович",
     passport: DEMO_REVIEW_PASSPORT,
@@ -758,8 +736,7 @@ function App() {
     ogrn: "",
     organizationName: "",
     accepted: storedConsentVersion === CONSENT_VERSION,
-  };
-  const [ownerForm, setOwnerForm] = useState(defaultOwnerForm);
+  });
   const [inviteSending, setInviteSending] = useState(false);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const messagesEndRef = useRef(null);
@@ -769,9 +746,9 @@ function App() {
   const pendingInviteResumeRef = useRef(false);
   const sessionRestoreDoneRef = useRef(false);
   const sessionLoadRequestRef = useRef(0);
-  const clearedOwnerDraftsRef = useRef(new Set());
   const gestureRef = useRef({ x: 0, y: 0 });
 
+  const reviewToken = getReviewTokenFromPath();
   const isPrivacyPath = window.location.pathname === "/privacy";
   const isTermsPath = window.location.pathname === "/terms";
   const isLandingPath = window.location.pathname === "/landing";
@@ -856,30 +833,6 @@ function App() {
     if (!reviewToken) return;
     loadReview(reviewToken);
   }, [reviewToken]);
-
-  useEffect(() => {
-    if (!reviewToken) return;
-    sessionStorage.setItem(
-      reviewFormDraftKey(reviewToken),
-      JSON.stringify({ ...reviewForm, formOpen: reviewFormOpen })
-    );
-  }, [reviewToken, reviewForm, reviewFormOpen]);
-
-  useEffect(() => {
-    if (!currentSession?.id) return;
-    const saved = readSessionDraft(ownerFormDraftKey(currentSession.id), {});
-    setOwnerForm({ ...defaultOwnerForm, ...(saved.form || {}) });
-    setOwnerSigningOpen(Boolean(saved.formOpen));
-  }, [currentSession?.id]);
-
-  useEffect(() => {
-    if (!currentSession?.id) return;
-    if (clearedOwnerDraftsRef.current.has(currentSession.id)) return;
-    sessionStorage.setItem(
-      ownerFormDraftKey(currentSession.id),
-      JSON.stringify({ form: ownerForm, formOpen: ownerSigningOpen })
-    );
-  }, [currentSession?.id, ownerForm, ownerSigningOpen]);
 
   useEffect(() => {
     if (!reviewFormOpen) return;
@@ -1056,10 +1009,6 @@ function App() {
         return;
       }
       setReviewData(data);
-      if (data.approved || data.finalized) {
-        sessionStorage.removeItem(reviewFormDraftKey(token));
-        setReviewFormOpen(false);
-      }
       if (data.party_email) {
         setReviewForm((form) => ({ ...form, email: form.email || data.party_email }));
       }
@@ -1110,7 +1059,6 @@ function App() {
       const confirmation = `Вы подписали договор. Он направлен на подписание первой стороне: ${data.owner_email || "адрес первой стороны"}. После подписания первой стороной вам придет уведомление о заключении договора.`;
       setReviewNotice("");
       setReviewConfirmation({ title: "Договор подписан", message: confirmation });
-      sessionStorage.removeItem(reviewFormDraftKey(reviewToken));
       setReviewData((current) => ({
         ...current,
         finalized: Boolean(data.finalized),
@@ -1597,8 +1545,6 @@ function App() {
         setAppNotice(apiErrorMessage(data.detail, "Не удалось подписать договор."));
         return;
       }
-      clearedOwnerDraftsRef.current.add(currentSession.id);
-      sessionStorage.removeItem(ownerFormDraftKey(currentSession.id));
       setOwnerSigningOpen(false);
       setInviteConfirmation(
         data.finalized
