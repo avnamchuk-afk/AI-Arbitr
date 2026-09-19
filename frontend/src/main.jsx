@@ -703,7 +703,6 @@ function App() {
   const [sessionSearchFocused, setSessionSearchFocused] = useState(false);
   const [composerFocused, setComposerFocused] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
-  const [questionResolved, setQuestionResolved] = useState(false);
   const [authPromptTitle, setAuthPromptTitle] = useState("Сохранить историю");
   const [authPromptCopy, setAuthPromptCopy] = useState(
     "Укажите email, чтобы сохранить этот договор, получить ссылку для входа и отправить договор второй стороне."
@@ -954,7 +953,7 @@ function App() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, thinking, appNotice, chatMode, questionResolved, ownerSigningOpen, sessionDetail?.latest_version?.id]);
+  }, [messages, thinking, appNotice, chatMode, ownerSigningOpen, sessionDetail?.latest_version?.id]);
 
   useEffect(() => {
     if (chatMode !== "agree") return;
@@ -1192,7 +1191,6 @@ function App() {
     setInviteLink("");
     setPartyEmail("");
     setChatMode("idle");
-    setQuestionResolved(false);
     setExpandedSessionGroups(["draft"]);
     setSessionSearch("");
     setSessions([session, ...sessions]);
@@ -1236,11 +1234,15 @@ function App() {
   async function sendMessage() {
     if (!draft.trim() || !currentSession) return;
     const rawContent = draft.trim();
-    const isContractUpdate = chatMode === "add";
+    const normalizedInput = rawContent.toLowerCase().replace(/ё/g, "е").trim();
+    const isContractUpdate = chatMode === "add" || (
+      hasContractVersion
+      && /^(пожалуйста,?\s*)?(добавь|добавить|включи|включить|дополни|дополнить|предусмотри|предусмотреть)\b/.test(normalizedInput)
+    );
     const isDispute = chatMode === "dispute";
     const isQuestion = chatMode === "question" || (hasContractVersion && chatMode === "idle");
     const isInitialContract = !hasContractVersion && !isContractUpdate && !isQuestion;
-    const content = isContractUpdate
+    const content = chatMode === "add"
       ? `ДОПОЛНИТЬ ДОГОВОР: ${rawContent}`
       : isDispute
         ? `СПОР: ${rawContent}`
@@ -1253,7 +1255,6 @@ function App() {
           ? ["Открытие спора", "Подготовка ответа", "Завершение"]
           : getThinkingSteps(rawContent);
     setDraft("");
-    setQuestionResolved(false);
     setMessages((items) => [...items, { role: "user", content: rawContent }]);
     setThinking(true);
     setThinkingStep(thinkingSteps[0]);
@@ -1302,15 +1303,16 @@ function App() {
       } else {
         setMessages((items) => [...items, { role: "assistant", content: data.content }]);
       }
-      if (data.next_action === "choose_norm" || data.next_action === "email" || data.next_action === "sent") {
-        setQuestionResolved(false);
-      } else if (data.next_action === "agreement") {
-        setQuestionResolved(false);
-      } else if (isQuestion) {
-        setQuestionResolved(true);
+      if (data.follow_up) {
+        setMessages((items) => [...items, { role: "assistant", content: data.follow_up }]);
       }
-      setChatMode("idle");
-      localStorage.removeItem(sessionModeKey(currentSession.id));
+      if (data.next_action === "agreement") {
+        setChatMode("agree");
+        localStorage.setItem(sessionModeKey(currentSession.id), "agree");
+      } else {
+        setChatMode("idle");
+        localStorage.removeItem(sessionModeKey(currentSession.id));
+      }
       if (data.next_action === "sent") {
         if (data.invite_link) setInviteLink(data.invite_link);
         setAppNotice(
@@ -1428,43 +1430,12 @@ function App() {
     await sendInviteRequest();
   }
 
-  function startQuestion() {
-    setAppNotice("");
-    setChatMode("question");
-    if (currentSession) localStorage.setItem(sessionModeKey(currentSession.id), "question");
-    setDraft("");
-    setQuestionResolved(false);
-    setToast("Режим вопроса включен");
-  }
-
-  function startAddition() {
-    setAppNotice("");
-    setChatMode("add");
-    if (currentSession) localStorage.setItem(sessionModeKey(currentSession.id), "add");
-    setDraft("");
-    setQuestionResolved(false);
-    setToast("Режим добавления условия включен");
-  }
-
-  function startAgreement() {
-    setAppNotice("");
-    setChatMode("agree");
-    if (currentSession) localStorage.setItem(sessionModeKey(currentSession.id), "agree");
-    setQuestionResolved(false);
-  }
-
   function startDispute() {
     setAppNotice("");
     setChatMode("dispute");
     if (currentSession) localStorage.setItem(sessionModeKey(currentSession.id), "dispute");
     setDraft("");
-    setQuestionResolved(false);
     setToast("Режим спора включен");
-  }
-
-  function showCurrentContract(term) {
-    setContractPreviewOpen(true);
-    setToast(term ? `Открыл текущую версию: ${term.label}` : "Открыл текущую версию договора");
   }
 
   function goBack() {
@@ -2431,7 +2402,7 @@ function App() {
                     <article>{sessionDetail?.latest_version?.content}</article>
                   </section>
                 )}
-                {hasContractVersion && !isFinalized && (
+                {hasContractVersion && !isFinalized && ((partyTwoSigned && !partyOneSigned) || chatMode === "agree") && (
                   <section className="message assistant chat-actions">
                     {partyTwoSigned && !partyOneSigned ? (
                       <div className="quick-flow">
@@ -2475,53 +2446,9 @@ function App() {
                           </form>
                         )}
                       </div>
-                    ) : questionResolved ? (
-                      <div className="quick-flow">
-                        <strong>Что дальше?</strong>
-                        <div className="action-row">
-                          <button onClick={startAddition}>Дополнить новым условием</button>
-                          <button onClick={startAgreement}>
-                            <Check size={16} /> Согласовать версию
-                          </button>
-                        </div>
-                      </div>
-                    ) : chatMode === "question" ? (
-                      <div className="quick-flow active-flow">
-                        <strong>Напишите вопрос по договору.</strong>
-                        <p>Я отвечу по текущей версии договора простым языком.</p>
-                      </div>
-                    ) : chatMode === "add" ? (
-                      <div className="quick-flow active-flow">
-                        <strong>Добавим новое условие.</strong>
-                        <p>Опишите условие, которое нужно добавить. Я предложу редакцию пункта.</p>
-                      </div>
                     ) : chatMode === "agree" ? (
                       <div className="quick-flow" ref={agreementRef}>
-                        <strong>Переходим к согласованию.</strong>
-                        <p>
-                          Сначала укажите, кем вы выступаете в договоре. Затем введите email контрагента.
-                        </p>
-                        <div className="agreement-steps" aria-label="Порядок отправки на согласование">
-                          <div className={isGuest ? "agreement-step active" : "agreement-step done"}>
-                            <span>{isGuest ? "1" : <Check size={13} />}</span>
-                            <div>
-                              <strong>{isGuest ? "Сначала сохранить вашу сессию" : "Ваша сессия сохранена"}</strong>
-                              <p>{isGuest ? "Это нужно, чтобы история договора не потерялась." : email}</p>
-                            </div>
-                          </div>
-                          <div className={isGuest ? "agreement-step" : "agreement-step active"}>
-                            <span>2</span>
-                            <div>
-                              <strong>Отправить ссылку второй стороне</strong>
-                              <p>После отправки вы увидите адрес получателя и копию письма у себя.</p>
-                            </div>
-                          </div>
-                        </div>
                         <div className="party-form">
-                          <p className="form-hint">
-                            В договоре сейчас стоят игровые данные сторон для удобного чтения.
-                            Перед финальной подписью каждая сторона заменит их на свои реальные данные.
-                          </p>
                           <label>
                             <span>Кем вы выступаете в договоре?</span>
                             <select
@@ -2569,21 +2496,7 @@ function App() {
                           </button>
                         )}
                       </div>
-                    ) : (
-                      <div className="quick-flow">
-                        <strong>Что дальше?</strong>
-                        <div className="action-row">
-                          <button onClick={startQuestion}>Задать вопрос по договору</button>
-                          <button onClick={startAddition}>Дополнить новым условием</button>
-                          <button onClick={() => showCurrentContract()}>
-                            <FileText size={16} /> Текущая версия
-                          </button>
-                          <button onClick={startAgreement}>
-                            <Check size={16} /> Согласиться с версией
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    ) : null}
                   </section>
                 )}
                 {isFinalized && (

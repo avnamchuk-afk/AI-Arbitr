@@ -20,6 +20,7 @@ from app.catalogs.contracts import (
     describe_contract_type,
     identify_contract_type,
 )
+from app.catalogs.chat_intents import detect_contract_message_intent, strip_addition_command
 from app.db.base import Base
 from app.db.session import SessionLocal, engine, get_db
 from app.models.entities import (
@@ -2608,7 +2609,15 @@ async def send_message(
         )
 
     latest_version_before_answer = get_latest_version(db, session)
-    is_contract_update = payload.content.startswith(CONTRACT_UPDATE_PREFIX)
+    contract_message_intent = (
+        detect_contract_message_intent(payload.content)
+        if latest_version_before_answer is not None and session.status != SessionStatus.finalized
+        else ""
+    )
+    is_contract_update = (
+        payload.content.startswith(CONTRACT_UPDATE_PREFIX)
+        or contract_message_intent == "addition"
+    )
     prior_messages = (
         db.query(Message)
         .filter(Message.session_id == session.id)
@@ -2717,6 +2726,17 @@ async def send_message(
 
     last_assistant_before_answer = last_assistant_message(prior_messages)
     last_assistant_lower = last_assistant_before_answer.lower()
+
+    if latest_version_before_answer is not None and contract_message_intent == "agreement":
+        latest_version = get_latest_version(db, session)
+        version_number = latest_version.version_number if latest_version else 1
+        answer = (
+            f"Переходим к согласованию версии № {version_number}. "
+            "Укажите ниже свою роль в договоре и e-mail второй стороны."
+        )
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {"content": answer, "contract_saved": False, "reasoning": "", "next_action": "agreement"}
 
     if (
         latest_version_before_answer is not None
@@ -2836,7 +2856,7 @@ async def send_message(
         return {"content": answer, "contract_saved": True, "reasoning": reasoning, "next_action": "agreement"}
 
     if latest_version_before_answer is not None and is_contract_update:
-        requested_change = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
+        requested_change = strip_addition_command(payload.content)
         try:
             answer = await review_contract_addition(
                 latest_version_before_answer.content,
@@ -2977,7 +2997,7 @@ async def send_message(
     elif latest_version_before_answer is None:
         reasoning_note = build_reasoning_note(payload.content)
     elif is_contract_update:
-        reasoning_note = build_update_reasoning_note(payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip())
+        reasoning_note = build_update_reasoning_note(strip_addition_command(payload.content))
     else:
         reasoning_note = build_question_reasoning_note(payload.content)
     if reasoning_note and not is_contract_question:
@@ -3002,7 +3022,7 @@ async def send_message(
         elif session.status != SessionStatus.finalized and latest_version_before_answer is not None:
             latest_version = latest_version_before_answer
             if is_contract_update:
-                requested_change = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
+                requested_change = strip_addition_command(payload.content)
                 prompt = [
                     {"role": "system", "text": CONTRACT_SYSTEM_PROMPT},
                     {
@@ -3107,7 +3127,7 @@ async def send_message(
                 "либо использовать финальный PDF договора, решение AI-Арбитра и историю уведомлений для обращения в суд."
             )
         if is_contract_update:
-            requested_change = payload.content.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
+            requested_change = strip_addition_command(payload.content)
             try:
                 display_answer = await summarize_added_contract_norm(answer, requested_change)
             except YandexGPTError:
@@ -3140,8 +3160,17 @@ async def send_message(
     contract_text = answer
     answer = warning + (display_answer or answer)
     db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+    follow_up = ""
     if should_save_contract_version:
         save_contract_version(db, session, contract_text)
+        if latest_version_before_answer is None:
+            follow_up = (
+                "Договор готов. Я подготовил юридически корректную и сбалансированную версию с учетом "
+                "обычной договорной практики и интересов обеих сторон.\n\n"
+                "Можете задать вопрос по любому пункту или написать, какое положение нужно добавить. "
+                "Если вопросов нет, напишите «нет» — перейдем к согласованию."
+            )
+            db.add(Message(session_id=session.id, role=MessageRole.assistant, content=follow_up))
     if is_dispute and session.status == SessionStatus.finalized:
         db.add(Message(session_id=session.id, role=MessageRole.system, content=f"DISPUTE_OPENED|{user.id}"))
         db.add(Message(session_id=session.id, role=MessageRole.system, content=f"BREACH_NOTICE|{user.id}|{now_utc().isoformat()}"))
@@ -3149,7 +3178,12 @@ async def send_message(
         record_analytics_event(db, "dispute_opened", session=session, user=user)
     upsert_contract_analytics_snapshot(db, session)
     db.commit()
-    return {"content": answer, "contract_saved": should_save_contract_version, "reasoning": reasoning_note}
+    return {
+        "content": answer,
+        "contract_saved": should_save_contract_version,
+        "reasoning": reasoning_note,
+        "follow_up": follow_up,
+    }
 
 
 @app.post("/sessions/{session_id}/versions")
