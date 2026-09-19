@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import LandingPage from "./LandingPage.jsx";
 import KnowledgeBase from "./KnowledgeBase.jsx";
+import { buildFeedbackMailto } from "./catalogs/feedback.js";
 import { FORM_HINTS, getChatSuggestions, getSessionSearchSuggestions } from "./catalogs/suggestions.js";
 import { APP_VERSION, APP_VERSION_SHORT } from "./version.js";
 import "./styles.css";
@@ -1611,6 +1612,16 @@ function App() {
   const sessionSearchSuggestions = sessionSearchFocused
     ? getSessionSearchSuggestions(sessions, sessionSearch)
     : [];
+  const feedbackMailto = buildFeedbackMailto({
+    supportEmail: SUPPORT_EMAIL,
+    appVersion: APP_VERSION,
+    model: selectedModel,
+    sessionId: currentSession?.id,
+    stage: sessionDetail?.workflow?.stage,
+    pathname: window.location.pathname,
+    userAgent: navigator.userAgent,
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+  });
   const normalizedSessionSearch = sessionSearch.trim().toLowerCase();
   const matchesSessionSearch = (session) => {
     if (!normalizedSessionSearch) return true;
@@ -2115,7 +2126,7 @@ function App() {
                 </div>
                 <div>
                   <dt>Обратная связь</dt>
-                  <dd><a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a></dd>
+                  <dd><a href={feedbackMailto}>{SUPPORT_EMAIL}</a></dd>
                 </div>
               </dl>
             </section>
@@ -2341,7 +2352,7 @@ function App() {
         </div>
         <div className="sidebar-footer">
           <button onClick={() => setHelpOpen(true)}>Помощь / FAQ</button>
-          <a href={SUPPORT_MAILTO}>Обратная связь · {SUPPORT_EMAIL}</a>
+          <a href={feedbackMailto}>Сообщить о проблеме</a>
         </div>
       </aside>
       <section className="chat-area">
