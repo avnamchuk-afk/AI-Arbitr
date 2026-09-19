@@ -1240,13 +1240,15 @@ function App() {
       hasContractVersion
       && /^(пожалуйста,?\s*)?(добавь|добавить|включи|включить|дополни|дополнить|предусмотри|предусмотреть)\b/.test(normalizedInput)
     );
-    const isDispute = chatMode === "dispute";
+    const disputeState = sessionDetail?.dispute;
+    const isDispute = chatMode === "dispute" || Boolean(disputeState?.opened && !disputeState?.closed);
+    const isDisputeResponse = isDispute && disputeState?.opened && !disputeState?.is_initiator;
     const isQuestion = chatMode === "question" || (hasContractVersion && chatMode === "idle");
     const isInitialContract = !hasContractVersion && !isContractUpdate && !isQuestion;
     const content = chatMode === "add"
       ? `ДОПОЛНИТЬ ДОГОВОР: ${rawContent}`
       : isDispute
-        ? `СПОР: ${rawContent}`
+        ? `${isDisputeResponse ? "ОТВЕТ" : "СПОР"}: ${rawContent}`
         : rawContent;
     const thinkingSteps = isContractUpdate
       ? ["Подготовка изменения", "Обновление версии", "Завершение"]
@@ -1310,6 +1312,9 @@ function App() {
       if (data.next_action === "agreement") {
         setChatMode("agree");
         localStorage.setItem(sessionModeKey(currentSession.id), "agree");
+      } else if (isDispute) {
+        setChatMode("dispute");
+        localStorage.setItem(sessionModeKey(currentSession.id), "dispute");
       } else {
         setChatMode("idle");
         localStorage.removeItem(sessionModeKey(currentSession.id));
@@ -1571,8 +1576,27 @@ function App() {
     loadSession(currentSession.id);
   }
 
+  async function acceptDisputeDecision() {
+    if (!currentSession) return;
+    const response = await fetch(`${API_URL}/sessions/${currentSession.id}/dispute/accept`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accepted: true }),
+    });
+    const data = await response.json().catch(() => ({}));
+    const message = response.ok
+      ? data.message
+      : apiErrorMessage(data.detail, "Не удалось подтвердить решение по спору.");
+    setAppNotice(message);
+    setToast(message);
+    loadSession(currentSession.id);
+    loadSessions();
+  }
+
   const hasContractVersion = Boolean(sessionDetail?.latest_version);
   const isFinalized = currentSession?.status === "finalized";
+  const disputeState = sessionDetail?.dispute;
   const chatSuggestions = composerFocused && !thinking
     ? getChatSuggestions({
         query: draft,
@@ -1628,8 +1652,10 @@ function App() {
       ? getQuestionPlaceholder(currentSession, sessionDetail)
       : chatMode === "add"
         ? getAdditionPlaceholder(currentSession, sessionDetail)
-        : chatMode === "dispute"
-          ? "Опишите, что произошло: кто, когда, какое условие нарушил"
+        : chatMode === "dispute" || (disputeState?.opened && !disputeState?.closed)
+          ? disputeState?.is_initiator
+            ? "Опишите, что осталось неисполненным"
+            : "Напишите ответ по существу спора"
           : messages.length === 0 && !hasContractVersion
             ? "Например: составь договор найма квартиры"
             : "Напишите сообщение";
@@ -2506,26 +2532,49 @@ function App() {
                 {isFinalized && (
                   <section className="signed-contract-card">
                     <div>
-                      <span>Договор подписан</span>
-                      <strong>Договор подписан сторонами</strong>
-                      <p>Подписан сторонами путем согласования: {formatFinalizedDate(sessionDetail?.session || currentSession)}. Финальный PDF направлен сторонам на email.</p>
+                      <span>{disputeState?.closed ? "Завершен" : disputeState?.opened ? "Спор" : "Договор подписан"}</span>
+                      <strong>
+                        {disputeState?.closed
+                          ? "Договор прекращен"
+                          : disputeState?.decision_issued
+                            ? "Решение по спору готово"
+                            : disputeState?.opened
+                              ? disputeState?.responded ? "Ответ второй стороны получен" : "Ожидается ответ второй стороны"
+                              : "Договор подписан сторонами"}
+                      </strong>
+                      {!disputeState?.opened && (
+                        <p>Подписан сторонами путем согласования: {formatFinalizedDate(sessionDetail?.session || currentSession)}. Финальный PDF направлен сторонам на email.</p>
+                      )}
                     </div>
                     <div className="signed-actions">
-                      <button className="dispute-button" onClick={startDispute}>
-                        Открыть спор
-                      </button>
+                      {!disputeState?.opened && !currentSession?.is_completed && (
+                        <button className="dispute-button" onClick={startDispute}>
+                          Открыть спор
+                        </button>
+                      )}
+                      {disputeState?.decision_issued && !disputeState?.closed && !disputeState?.accepted_by_me && (
+                        <button className="dispute-button" onClick={acceptDisputeDecision}>
+                          Согласиться с решением
+                        </button>
+                      )}
                       <button className="download-button" onClick={downloadCertificate}>
                         <Download size={16} /> Скачать справку
                       </button>
-                      {!currentSession?.is_completed && (
+                      {!currentSession?.is_completed && !disputeState?.opened && (
                         <button className="download-button" onClick={markCompleted} disabled={completionConfirmed}>
                           {completionConfirmed ? "Ожидается вторая сторона" : "Договор исполнен"}
                         </button>
                       )}
                     </div>
-                    {chatMode === "dispute" && (
+                    {(chatMode === "dispute" || disputeState?.opened) && !disputeState?.closed && (
                       <p className="panel-hint">
-                        Опишите ситуацию. Я проверю условия договора, историю согласования и подготовлю позицию по спору.
+                        {disputeState?.decision_issued
+                          ? disputeState?.accepted_by_me
+                            ? "Ваше согласие сохранено. Ожидается подтверждение второй стороны."
+                            : "Прочитайте решение в чате и подтвердите его, если согласны."
+                          : disputeState?.is_initiator
+                            ? "Опишите ситуацию в чате. Я проверю договор и учту ответ второй стороны."
+                            : "Ответьте в чате по существу уведомления. Ответ будет сохранен в истории."}
                       </p>
                     )}
                   </section>

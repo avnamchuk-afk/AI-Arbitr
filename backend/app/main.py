@@ -66,6 +66,7 @@ from app.workflows.contract import (
     describe_workflow,
     workflow_catalog,
 )
+from app.workflows.dispute import parse_dispute_state
 
 Base.metadata.create_all(bind=engine)
 
@@ -165,6 +166,10 @@ class ConsentRequest(BaseModel):
 class MessageRequest(BaseModel):
     content: str
     model: str | None = None
+
+
+class DisputeActionRequest(BaseModel):
+    accepted: bool = True
 
 
 class VersionRequest(BaseModel):
@@ -1981,6 +1986,7 @@ def get_session(session_id: str, user: User = Depends(get_current_user), db: Ses
         "messages": messages,
         "workflow": workflow_for(db, session, actor_role),
         "contract_type": contract_type_for(db, session),
+        "dispute": dispute_state_for(db, session, user),
     }
 
 
@@ -2020,6 +2026,17 @@ def get_latest_version(db: Session, session: ContractSession) -> ContractVersion
         .order_by(ContractVersion.version_number.desc())
         .first()
     )
+
+
+def dispute_state_for(db: Session, session: ContractSession, user: User) -> dict:
+    contents = [
+        row[0]
+        for row in db.query(Message.content)
+        .filter(Message.session_id == session.id, Message.role == MessageRole.system)
+        .order_by(Message.created_at.asc())
+        .all()
+    ]
+    return parse_dispute_state(contents).for_user(str(user.id))
 
 
 def build_workflow_context(db: Session, session: ContractSession) -> WorkflowContext:
@@ -2122,6 +2139,23 @@ def email_other_contract_parties(session: ContractSession, user: User, subject: 
             continue
 
 
+def email_all_contract_parties(session: ContractSession, subject: str, body: str) -> None:
+    for participant in session.participants:
+        recipient = participant.user
+        if recipient is None or is_guest_user(recipient):
+            continue
+        try:
+            send_dispute_notice(
+                recipient.email,
+                session.title,
+                subject,
+                body,
+                f"{settings.app_base_url}/?session={session.id}",
+            )
+        except Exception:
+            continue
+
+
 def get_final_version(db: Session, session: ContractSession) -> ContractVersion | None:
     return (
         db.query(ContractVersion)
@@ -2155,6 +2189,7 @@ def serialize_session_summary(db: Session, session: ContractSession, user: User)
         "party_2_email": party_2.user.email if party_2 and party_2.user and not is_guest_user(party_2.user) else "",
         "workflow": workflow_for(db, session, actor_role),
         "contract_type": contract_type_for(db, session),
+        "dispute": dispute_state_for(db, session, user),
     }
 
 
@@ -2597,7 +2632,20 @@ async def send_message(
             detail="Сообщение слишком длинное. Сформулируйте вопрос или изменение договора короче 4000 знаков.",
         )
 
-    normalized_content = payload.content.strip().upper()
+    active_dispute = parse_dispute_state([
+        row[0]
+        for row in db.query(Message.content)
+        .filter(Message.session_id == session.id, Message.role == MessageRole.system)
+        .all()
+    ])
+    effective_content = payload.content
+    if session.status == SessionStatus.finalized and active_dispute.opened and not active_dispute.closed:
+        upper_content = payload.content.strip().upper()
+        if not upper_content.startswith(("СПОР", "ОТВЕТ")):
+            prefix = "СПОР" if active_dispute.initiator_user_id == str(user.id) else "ОТВЕТ"
+            effective_content = f"{prefix}: {payload.content}"
+
+    normalized_content = effective_content.strip().upper()
     is_dispute = normalized_content.startswith("СПОР")
     is_dispute_response = normalized_content.startswith("ОТВЕТ")
     if session.status == SessionStatus.finalized and not (is_dispute or is_dispute_response):
@@ -2687,9 +2735,15 @@ async def send_message(
             if str(user.id) == initiator_id:
                 answer = "Ответ на уведомление должна направить другая сторона договора. Вы можете дополнить описание спора сообщением без слова «ОТВЕТ»."
             else:
-                db.add(Message(session_id=session.id, role=MessageRole.system, content=f"DELAY_RESPONSE|{user.id}|{now_utc().isoformat()}"))
+                response_already_saved = any(
+                    message.role == MessageRole.system
+                    and message.content.startswith(f"DELAY_RESPONSE|{user.id}|")
+                    for message in prior_messages
+                )
+                if not response_already_saved:
+                    db.add(Message(session_id=session.id, role=MessageRole.system, content=f"DELAY_RESPONSE|{user.id}|{now_utc().isoformat()}"))
                 answer = "Ответ зафиксирован и будет учтен. Автоматическое уведомление о нарушении не формируется."
-                email_other_contract_parties(session, user, "Получен ответ на уведомление о просрочке", payload.content.strip())
+                email_other_contract_parties(session, user, "Получен ответ на уведомление о просрочке", effective_content.removeprefix("ОТВЕТ:").strip())
         db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
         db.commit()
         return {"content": answer, "contract_saved": False, "reasoning": ""}
@@ -2706,7 +2760,7 @@ async def send_message(
             notice_body = (
                 f"Сообщается о возможной просрочке исполнения: {description}\n\n"
                 f"Просим ответить и сообщить срок исполнения до {format_moscow_time(response_due)} по Москве. "
-                "Для ответа откройте договор и начните сообщение со слова «ОТВЕТ»."
+                "Для ответа откройте договор и напишите сообщение в чате."
             )
             db.add(
                 Message(
@@ -2715,11 +2769,18 @@ async def send_message(
                     content=f"DELAY_NOTICE|{user.id}|{sent_at.isoformat()}|{response_due.isoformat()}",
                 )
             )
+            db.add(
+                Message(
+                    session_id=session.id,
+                    role=MessageRole.system,
+                    content=f"DISPUTE_OPENED|{user.id}|{sent_at.isoformat()}",
+                )
+            )
             answer = (
                 "Уведомление о просрочке направлено второй стороне. Я оставил три рабочих дня на ответ или исполнение. "
                 f"Срок ответа: {format_moscow_time(response_due)} по Москве.\n\n"
-                "Если ответа не будет, после этой даты снова нажмите «Открыть спор»: я подготовлю уведомление о нарушении, "
-                "процитирую условие договора и рассчитаю требование."
+                "Если ответа не будет, после этой даты опишите в чате, что осталось неисполненным: "
+                "я подготовлю уведомление о нарушении, процитирую условие договора и рассчитаю требование."
             )
             email_other_contract_parties(session, user, "Уведомление о просрочке исполнения", notice_body)
             db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
@@ -2752,12 +2813,7 @@ async def send_message(
             and message.created_at > notice_marker.created_at
             for message in prior_messages
         )
-        if response_exists:
-            answer = "Вторая сторона ответила на уведомление. Опишите, что осталось неисполненным, чтобы я учел обе позиции."
-            db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
-            db.commit()
-            return {"content": answer, "contract_saved": False, "reasoning": ""}
-        if now_utc() < response_due:
+        if not response_exists and now_utc() < response_due:
             answer = f"Срок для ответа еще не истек. Ждем до {format_moscow_time(response_due)} по Москве."
             db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
             db.commit()
@@ -3043,6 +3099,7 @@ async def send_message(
         db.add(Message(session_id=session.id, role=MessageRole.system, content=reasoning_note))
     db.commit()
 
+    generation_succeeded = False
     try:
         should_save_contract_version = session.status != SessionStatus.finalized
         display_answer: str | None = None
@@ -3148,6 +3205,7 @@ async def send_message(
                 ]
         if prompt is not None:
             answer = await ask_yandex_gpt(prompt, model=payload.model)
+        generation_succeeded = True
         if latest_version_before_answer is None and not used_fixed_template:
             answer = normalize_contract_legal_title(answer, payload.content)
         if should_save_contract_version or looks_like_contract_text(answer):
@@ -3214,11 +3272,12 @@ async def send_message(
                 "Если вопросов нет, напишите «нет» — перейдем к согласованию."
             )
             db.add(Message(session_id=session.id, role=MessageRole.assistant, content=follow_up))
-    if is_dispute and session.status == SessionStatus.finalized:
-        db.add(Message(session_id=session.id, role=MessageRole.system, content=f"DISPUTE_OPENED|{user.id}"))
+    if is_dispute and session.status == SessionStatus.finalized and generation_succeeded:
+        decision_at = now_utc()
         db.add(Message(session_id=session.id, role=MessageRole.system, content=f"BREACH_NOTICE|{user.id}|{now_utc().isoformat()}"))
+        db.add(Message(session_id=session.id, role=MessageRole.system, content=f"DISPUTE_DECISION|{decision_at.isoformat()}"))
         email_other_contract_parties(session, user, "Уведомление о нарушении обязательства", answer)
-        record_analytics_event(db, "dispute_opened", session=session, user=user)
+        record_analytics_event(db, "dispute_decision_issued", session=session, user=user)
     upsert_contract_analytics_snapshot(db, session)
     db.commit()
     return {
@@ -3226,6 +3285,55 @@ async def send_message(
         "contract_saved": should_save_contract_version,
         "reasoning": reasoning_note,
         "follow_up": follow_up,
+    }
+
+
+@app.post("/sessions/{session_id}/dispute/accept")
+def accept_dispute_decision(
+    session_id: str,
+    payload: DisputeActionRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = get_accessible_session(db, session_id, user)
+    participant = get_user_participant(db, session, user)
+    state = parse_dispute_state([
+        row[0]
+        for row in db.query(Message.content)
+        .filter(Message.session_id == session.id, Message.role == MessageRole.system)
+        .order_by(Message.created_at.asc())
+        .all()
+    ])
+    if not state.decision_issued:
+        raise HTTPException(status_code=409, detail="Решение по спору еще не сформировано")
+    if state.closed or session.is_completed:
+        return {"closed": True, "message": "Договор прекращен"}
+    if not payload.accepted:
+        raise HTTPException(status_code=400, detail="Подтверждение решения не получено")
+    if str(user.id) not in state.accepted_user_ids:
+        db.add(Message(
+            session_id=session.id,
+            role=MessageRole.system,
+            content=f"DISPUTE_ACCEPTED|{user.id}|{now_utc().isoformat()}",
+        ))
+    accepted_ids = set(state.accepted_user_ids) | {str(user.id)}
+    participant_ids = {str(item.user_id) for item in session.participants if item.user_id is not None}
+    closed = bool(participant_ids) and participant_ids.issubset(accepted_ids)
+    if closed:
+        session.is_completed = True
+        session.completed_at = now_utc()
+        db.add(Message(session_id=session.id, role=MessageRole.system, content=f"DISPUTE_CLOSED|agreement|{now_utc().isoformat()}"))
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content="Договор прекращен по результатам разрешения спора."))
+        email_all_contract_parties(session, "Спор завершен", "Решение принято обеими сторонами. Договор прекращен.")
+        record_analytics_event(db, "dispute_closed", session=session, user=user, properties={"outcome": "agreement"})
+    else:
+        email_other_contract_parties(session, user, "Сторона согласилась с решением", "Откройте договор и подтвердите решение по спору.")
+    upsert_contract_analytics_snapshot(db, session)
+    db.commit()
+    return {
+        "closed": closed,
+        "message": "Договор прекращен" if closed else "Согласие сохранено. Ожидается подтверждение второй стороны",
+        "workflow": workflow_for(db, session, participant.role.value),
     }
 
 
