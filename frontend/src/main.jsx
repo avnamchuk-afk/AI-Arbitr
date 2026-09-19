@@ -368,6 +368,8 @@ function getContractContext(session, detail) {
 }
 
 function getLegalRoleOptions(session, detail) {
+  const catalogRoles = detail?.contract_type?.roles;
+  if (Array.isArray(catalogRoles) && catalogRoles.length === 2) return catalogRoles;
   const context = getContractContext(session, detail);
   if (context.includes("найм") || context.includes("нанимател") || context.includes("жилое помещ")) return ["Наймодатель", "Наниматель"];
   if (context.includes("аренд")) return ["Арендодатель", "Арендатор"];

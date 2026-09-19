@@ -1,17 +1,8 @@
-APP_VERSION = "0.6.0-beta"
-
-HOUSING_RENT_TEMPLATE_ID = "housing-rent-ru"
-HOUSING_RENT_TEMPLATE_VERSION = "1.0"
-WEBSITE_DEVELOPMENT_TEMPLATE_ID = "website-development-ru"
-WEBSITE_DEVELOPMENT_TEMPLATE_VERSION = "1.0"
-UNIVERSAL_TEMPLATE_ID = "universal-contract-ru"
-UNIVERSAL_TEMPLATE_VERSION = "1.0"
+APP_VERSION = "0.7.0-beta"
 
 
 def identify_contract_template(content: str) -> tuple[str, str]:
-    normalized = content.upper()
-    if "ДОГОВОР НАЙМА ЖИЛОГО ПОМЕЩЕНИЯ" in normalized:
-        return HOUSING_RENT_TEMPLATE_ID, HOUSING_RENT_TEMPLATE_VERSION
-    if "РАЗРАБОТ" in normalized and ("САЙТ" in normalized or "ПРОГРАМ" in normalized):
-        return WEBSITE_DEVELOPMENT_TEMPLATE_ID, WEBSITE_DEVELOPMENT_TEMPLATE_VERSION
-    return UNIVERSAL_TEMPLATE_ID, UNIVERSAL_TEMPLATE_VERSION
+    from app.catalogs.contracts import identify_contract_type
+
+    contract_type = identify_contract_type(content, content=True)
+    return contract_type.template_id, contract_type.template_version

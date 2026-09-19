@@ -14,6 +14,12 @@ from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_cors_origins, settings
+from app.catalogs.contracts import (
+    build_contract_from_catalog,
+    contract_catalog,
+    describe_contract_type,
+    identify_contract_type,
+)
 from app.db.base import Base
 from app.db.session import SessionLocal, engine, get_db
 from app.models.entities import (
@@ -40,7 +46,7 @@ from app.services.auth import (
     read_session_cookie,
     token_expires_at,
 )
-from app.services.contract_templates import AI_ARBITR_DISPUTE_SECTION, build_housing_rent_contract, build_website_development_contract
+from app.services.contract_templates import AI_ARBITR_DISPUTE_SECTION
 from app.services.email import send_contract_invite, send_contract_signed_notice, send_dispute_notice, send_magic_link, send_signature_progress_notice, smtp_is_configured
 from app.services.pdf import build_contract_pdf, build_interaction_certificate_pdf
 from app.services.privacy import contains_passport_like_data
@@ -460,49 +466,19 @@ def build_broad_contract_clarification() -> str:
 
 
 def is_housing_rent_request(content: str) -> bool:
-    normalized = content.lower().replace("ё", "е")
-    direct_housing_rent_phrases = (
-        "договор найма",
-        "найм жилого",
-        "найма жилого",
-        "наймодатель",
-        "наниматель",
-    )
-    if any(phrase in normalized for phrase in direct_housing_rent_phrases):
-        return True
-    housing_markers = (
-        "жиль",
-        "жил",
-        "квартир",
-        "комнат",
-        "дом",
-        "помещени",
-    )
-    rent_markers = (
-        "аренд",
-        "найм",
-        "снять",
-        "сда",
-    )
-    return any(marker in normalized for marker in housing_markers) and any(
-        marker in normalized for marker in rent_markers
-    )
+    return identify_contract_type(content).id == "housing_rent"
 
 
 def is_website_development_request(content: str) -> bool:
-    normalized = content.lower().replace("ё", "е")
-    website_markers = ("сайт", "лендинг", "landing", "веб", "интернет-магазин")
-    work_markers = ("создан", "разработ", "сдел", "подряд", "договор")
-    return any(marker in normalized for marker in website_markers) and any(
-        marker in normalized for marker in work_markers
-    )
+    return identify_contract_type(content).id == "website_development"
 
 
 def normalize_contract_legal_title(contract_text: str, user_request: str) -> str:
-    if not is_housing_rent_request(user_request):
+    contract_type = identify_contract_type(user_request)
+    if contract_type.id == "universal":
         return contract_text
 
-    legal_title = "Договор найма жилого помещения"
+    legal_title = contract_type.legal_title
     lines = contract_text.splitlines()
     for index, line in enumerate(lines):
         stripped = line.strip()
@@ -812,7 +788,7 @@ def build_object_summary(contract_text: str) -> str:
     return object_type
 
 
-def build_key_terms(contract_text: str) -> list[dict[str, str]]:
+def build_housing_key_terms(contract_text: str) -> list[dict[str, str]]:
     term_placeholder = first_placeholder_value(contract_text, ("дата окончания договора", "срок"))
     if "13 августа 2027" in contract_text:
         term_value = "11 месяцев"
@@ -860,25 +836,34 @@ def build_key_terms(contract_text: str) -> list[dict[str, str]]:
     ]
 
 
+def build_key_terms(contract_text: str) -> list[dict[str, str]]:
+    contract_type = identify_contract_type(contract_text, content=True)
+    if contract_type.id == "housing_rent":
+        return build_housing_key_terms(contract_text)
+
+    terms: list[dict[str, str]] = []
+    sentences = split_contract_sentences(contract_text)
+    for field in contract_type.card_fields:
+        if field.key == "disputes":
+            terms.append({"label": field.label, "value": "через AI-Arbitr"})
+            continue
+        sentence = next(
+            (
+                item
+                for item in sentences
+                if any(marker in item.lower().replace("ё", "е") for marker in field.markers)
+            ),
+            "не указано",
+        )
+        terms.append({"label": field.label, "value": compact_key_term(sentence, 72)})
+    return terms
+
+
 def infer_contract_category(title: str = "", contract_text: str = "") -> str:
-    normalized = f"{title}\n{contract_text}".lower().replace("ё", "е")
-    if any(marker in normalized for marker in ("найм", "жил", "квартир", "аренд")):
-        return "housing_rent"
-    if any(marker in normalized for marker in ("saas", "саас", "сайт", "лендинг", "разработ")):
-        return "digital_development"
-    if any(marker in normalized for marker in ("клининг", "уборк")):
-        return "cleaning"
-    if any(marker in normalized for marker in ("подряд", "строител", "ремонт")):
-        return "construction"
-    if any(marker in normalized for marker in ("юрид", "консультац")):
-        return "legal_services"
-    if any(marker in normalized for marker in ("поставк", "купл", "продаж")):
-        return "goods"
-    if any(marker in normalized for marker in ("заем", "займ")):
-        return "loan"
-    if "договор" in normalized:
-        return "other_contract"
-    return "unknown"
+    contract_type = identify_contract_type(f"{title}\n{contract_text}", content=True)
+    if contract_type.id == "universal" and "договор" not in f"{title}\n{contract_text}".lower():
+        return "unknown"
+    return contract_type.category
 
 
 def extract_amount(value: str) -> float | None:
@@ -1033,19 +1018,8 @@ def extract_email_from_text(text: str) -> str | None:
 
 
 def infer_legal_role_pair(title: str, contract_text: str) -> tuple[str, str]:
-    source = f"{title}\n{contract_text}".lower()
-    role_pairs = (
-        (("найм", "нанимател", "жилое помещ"), ("Наймодатель", "Наниматель")),
-        (("аренд", "арендатор"), ("Арендодатель", "Арендатор")),
-        (("купл", "продавец", "покупател"), ("Продавец", "Покупатель")),
-        (("подряд", "подрядчик"), ("Заказчик", "Подрядчик")),
-        (("услуг", "исполнитель", "заказчик", "разработ"), ("Заказчик", "Исполнитель")),
-        (("займ", "заемщик", "займодав"), ("Займодавец", "Заемщик")),
-    )
-    for markers, pair in role_pairs:
-        if any(marker in source for marker in markers):
-            return pair
-    return ("Заказчик", "Исполнитель")
+    contract_type = identify_contract_type(f"{title}\n{contract_text}", content=True)
+    return contract_type.roles
 
 
 def assign_legal_roles(session: ContractSession, contract_text: str, creator_role: str) -> None:
@@ -1487,28 +1461,9 @@ def build_norm_saved_answer(norm: str) -> str:
 
 
 def infer_session_title(content: str) -> str:
-    if is_housing_rent_request(content):
-        return "Договор найма"
-
-    normalized = content.lower()
-    title_rules = [
-        (("saas", "саас", "сaas", "saaс"), "Договор SaaS"),
-        (("найм", "квартир", "жил", "жиль"), "Договор найма"),
-        (("аренд",), "Договор аренды"),
-        (("лендинг", "landing"), "Договор на лендинг"),
-        (("сайт", "веб"), "Договор на сайт"),
-        (("клининг", "уборк"), "Договор клининга"),
-        (("юруслуг", "юридическ", "консультац", "претензи"), "Договор юруслуг"),
-        (("подряд", "ремонт", "строитель"), "Договор подряда"),
-        (("поставк",), "Договор поставки"),
-        (("купл", "продаж"), "Договор купли-продажи"),
-        (("заем", "займ", "долг"), "Договор займа"),
-        (("ндаш", "nda", "конфиденциаль"), "NDA"),
-        (("оказан", "услуг"), "Договор услуг"),
-    ]
-    for keywords, title in title_rules:
-        if any(keyword in normalized for keyword in keywords):
-            return title
+    contract_type = identify_contract_type(content)
+    if contract_type.id != "universal":
+        return contract_type.short_title
 
     compact = " ".join(content.replace("\n", " ").split())
     if not compact:
@@ -1524,6 +1479,11 @@ def health():
 @app.get("/workflow/catalog")
 def get_workflow_catalog():
     return workflow_catalog()
+
+
+@app.get("/contracts/catalog")
+def get_contract_catalog():
+    return contract_catalog()
 
 
 @app.get("/stats")
@@ -2013,6 +1973,7 @@ def get_session(session_id: str, user: User = Depends(get_current_user), db: Ses
         "key_terms": build_key_terms(latest_version.content) if latest_version else [],
         "messages": messages,
         "workflow": workflow_for(db, session, actor_role),
+        "contract_type": contract_type_for(db, session),
     }
 
 
@@ -2085,6 +2046,12 @@ def build_workflow_context(db: Session, session: ContractSession) -> WorkflowCon
 
 def workflow_for(db: Session, session: ContractSession, actor_role: str) -> dict:
     return describe_workflow(build_workflow_context(db, session), actor_role)
+
+
+def contract_type_for(db: Session, session: ContractSession) -> dict:
+    latest_version = get_latest_version(db, session)
+    source = f"{session.title}\n{latest_version.content if latest_version else ''}"
+    return describe_contract_type(identify_contract_type(source, content=True))
 
 
 def require_workflow_action(
@@ -2180,6 +2147,7 @@ def serialize_session_summary(db: Session, session: ContractSession, user: User)
         "party_2_approved": party_2.approval_status == ApprovalStatus.approved if party_2 else False,
         "party_2_email": party_2.user.email if party_2 and party_2.user and not is_guest_user(party_2.user) else "",
         "workflow": workflow_for(db, session, actor_role),
+        "contract_type": contract_type_for(db, session),
     }
 
 
@@ -2500,6 +2468,7 @@ def get_review_contract(invite_token: str, db: Session = Depends(get_db)):
         "download_token": session.download_token,
         "pdf_link": f"{settings.api_base_url}/review/{invite_token}.pdf",
         "workflow": workflow_for(db, session, "party_2"),
+        "contract_type": contract_type_for(db, session),
     }
 
 
@@ -3097,12 +3066,9 @@ async def send_message(
                     },
                 ]
         else:
-            if is_housing_rent_request(payload.content):
-                answer = build_housing_rent_contract(settings.app_base_url)
-                prompt = None
-                used_fixed_template = True
-            elif is_website_development_request(payload.content):
-                answer = build_website_development_contract()
+            _, catalog_contract = build_contract_from_catalog(payload.content, settings.app_base_url)
+            if catalog_contract is not None:
+                answer = catalog_contract
                 prompt = None
                 used_fixed_template = True
             else:
