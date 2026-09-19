@@ -152,14 +152,14 @@ class RegisterRequest(BaseModel):
     personal_data_accepted: bool
     service_rules_accepted: bool = False
     cookies_accepted: bool = False
-    consent_version: str = "1.0"
+    consent_version: str = "1.1"
 
 
 class ConsentRequest(BaseModel):
     service_rules_accepted: bool
     privacy_accepted: bool
     cookies_accepted: bool
-    consent_version: str = "1.0"
+    consent_version: str = "1.1"
 
 
 class MessageRequest(BaseModel):
@@ -193,13 +193,13 @@ class ReviewApproveRequest(BaseModel):
     personal_data_accepted: bool
     service_rules_accepted: bool = False
     cookies_accepted: bool = False
-    consent_version: str = "1.0"
+    consent_version: str = "1.1"
 
 
 GUEST_EMAIL_SUFFIX = "@guest.ai-arbitr.local"
 VERIFIED_IP_COOKIE_NAME = "ai_arbitr_verified_ip"
 DAILY_ACTION_LIMIT = 100
-CONSENT_VERSION = "1.0"
+CONSENT_VERSION = "1.1"
 DEMO_SESSION_TITLE = "пример"
 LEGACY_DEMO_SESSION_TITLE = "Пример: договор на лендинг"
 DEMO_USER_PROMPT = "Составь договор найма"
