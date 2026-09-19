@@ -200,6 +200,7 @@ GUEST_EMAIL_SUFFIX = "@guest.ai-arbitr.local"
 VERIFIED_IP_COOKIE_NAME = "ai_arbitr_verified_ip"
 DAILY_ACTION_LIMIT = 100
 CONSENT_VERSION = "1.0"
+ACCEPTED_CONSENT_VERSIONS = {"1.0", "1.1"}
 DEMO_SESSION_TITLE = "пример"
 LEGACY_DEMO_SESSION_TITLE = "Пример: договор на лендинг"
 DEMO_USER_PROMPT = "Составь договор найма"
@@ -1670,7 +1671,7 @@ def require_unified_consent(personal_data: bool, service_rules: bool, cookies: b
             status_code=400,
             detail="Нужно принять Правила сервиса, Политику конфиденциальности и использование обязательных cookies",
         )
-    if version != CONSENT_VERSION:
+    if version not in ACCEPTED_CONSENT_VERSIONS:
         raise HTTPException(status_code=409, detail="Правила сервиса обновлены. Обновите страницу и примите новую редакцию")
 
 
@@ -1880,7 +1881,7 @@ def auth_me(
         "is_guest": is_guest_user(user),
         "consent_version": user.consent_version,
         "required_consent_version": CONSENT_VERSION,
-        "consent_required": user.consent_version != CONSENT_VERSION,
+        "consent_required": user.consent_version not in ACCEPTED_CONSENT_VERSIONS,
     }
 
 

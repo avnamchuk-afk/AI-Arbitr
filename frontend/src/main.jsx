@@ -47,6 +47,7 @@ const DEFAULT_AI_MODEL = "qwen";
 const LAST_SESSION_KEY = "ai-arbitr-current-session";
 const PENDING_INVITE_KEY = "ai-arbitr-pending-invite";
 const CONSENT_VERSION = "1.0";
+const ACCEPTED_CONSENT_VERSIONS = new Set(["1.0", "1.1"]);
 
 function apiErrorMessage(detail, fallback) {
   if (typeof detail === "string" && detail.trim()) return detail;
@@ -674,9 +675,9 @@ function App() {
   const [toast, setToast] = useState("");
   const [inviteConfirmation, setInviteConfirmation] = useState("");
   const storedConsentVersion = localStorage.getItem("ai-arbitr-consent-version");
-  const [accepted, setAccepted] = useState(storedConsentVersion === CONSENT_VERSION);
+  const [accepted, setAccepted] = useState(ACCEPTED_CONSENT_VERSIONS.has(storedConsentVersion));
   const [cookieConsentVisible, setCookieConsentVisible] = useState(
-    storedConsentVersion !== CONSENT_VERSION
+    !ACCEPTED_CONSENT_VERSIONS.has(storedConsentVersion)
   );
   const [authed, setAuthed] = useState(false);
   const [sessions, setSessions] = useState([]);
@@ -718,7 +719,7 @@ function App() {
     ogrn: "",
     organizationName: "",
     email: "",
-    accepted: storedConsentVersion === CONSENT_VERSION,
+    accepted: ACCEPTED_CONSENT_VERSIONS.has(storedConsentVersion),
   });
   const [reviewNotice, setReviewNotice] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -735,7 +736,7 @@ function App() {
     inn: "",
     ogrn: "",
     organizationName: "",
-    accepted: storedConsentVersion === CONSENT_VERSION,
+    accepted: ACCEPTED_CONSENT_VERSIONS.has(storedConsentVersion),
   });
   const [inviteSending, setInviteSending] = useState(false);
   const [authSubmitting, setAuthSubmitting] = useState(false);
@@ -764,7 +765,7 @@ function App() {
         const response = await fetch(`${API_URL}/auth/me`, { credentials: "include" });
         const data = await response.json().catch(() => ({}));
         if (response.ok) {
-          if (data.consent_required || data.consent_version !== CONSENT_VERSION) {
+          if (data.consent_required || !ACCEPTED_CONSENT_VERSIONS.has(data.consent_version)) {
             setAccepted(false);
             setCookieConsentVisible(true);
           }
