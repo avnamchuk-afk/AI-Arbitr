@@ -23,6 +23,44 @@ AGREEMENT_PHRASES = {
     "согласовать версию",
 }
 
+OFF_TOPIC_EXACT_PHRASES = {
+    "привет",
+    "здравствуй",
+    "здравствуйте",
+    "как дела",
+    "как ты",
+    "что ты умеешь",
+    "поговори со мной",
+}
+
+OFF_TOPIC_ACTION_PATTERNS = (
+    r"\b(?:расскажи|придумай)\s+(?:анекдот|шутку|сказку|историю)\b",
+    r"\b(?:напиши|сочини|сгенерируй)\s+(?:стих|песню|эссе|реферат|код|программу|скрипт|рецепт)\b",
+    r"\b(?:посоветуй|порекомендуй)\s+(?:фильм|сериал|книгу|ресторан|игру)\b",
+)
+
+OFF_TOPIC_SUBJECT_PATTERNS = (
+    r"\b(?:рецепт|погода|гороскоп|курс валют|результат матча|новости спорта|президент|политик|"
+    r"столица|музык|знаменитост|космос|футбол|хоккей)\b",
+)
+
+CONTRACT_CONTEXT_PATTERN = (
+    r"\b(?:договор|услови|пункт|положени|сторон|обязательств|оплат|платеж|срок|найм|аренд|"
+    r"неустой|штраф|закон|кодекс|гк|подряд|услуг|исполнен|расторжен|депозит|обеспечительн)"
+)
+
+CONTRACT_CREATION_PATTERN = (
+    r"\b(?:состав|подготов|созда|разработ|нужен|нужна|нужно)\w*\s+(?:проект\s+)?(?:догов|соглашен|оферт)|"
+    r"\b(?:догов|соглашен|оферт|найм|аренд|подряд|оказан\w*\s+услуг|поставк|займ|лизинг|купл|продаж)"
+)
+
+PROMPT_ABUSE_PATTERNS = (
+    r"\bигнорируй\s+(?:все\s+)?(?:предыдущие|системные)\s+(?:инструкции|правила|промты)\b",
+    r"\b(?:покажи|раскрой|выведи)\s+(?:системный\s+)?промт\b",
+    r"\bты\s+теперь\s+(?:не|другая|другой|свободная|свободный)\b",
+    r"\b(?:developer|system)\s*(?:message|prompt)\b",
+)
+
 
 def detect_contract_message_intent(text: str) -> str:
     normalized = " ".join(text.lower().replace("ё", "е").split())
@@ -42,3 +80,21 @@ def strip_addition_command(text: str) -> str:
         flags=re.IGNORECASE,
     )
     return cleaned or text.strip()
+
+
+def is_clearly_unrelated_to_contract(text: str) -> bool:
+    normalized = " ".join(text.lower().replace("ё", "е").split()).strip(" .!?")
+    if normalized in OFF_TOPIC_EXACT_PHRASES:
+        return True
+    if any(re.search(pattern, normalized, re.IGNORECASE) for pattern in PROMPT_ABUSE_PATTERNS):
+        return True
+    if any(re.search(pattern, normalized, re.IGNORECASE) for pattern in OFF_TOPIC_ACTION_PATTERNS):
+        return True
+    if re.search(CONTRACT_CONTEXT_PATTERN, normalized, re.IGNORECASE):
+        return False
+    return any(re.search(pattern, normalized, re.IGNORECASE) for pattern in OFF_TOPIC_SUBJECT_PATTERNS)
+
+
+def is_contract_creation_request(text: str) -> bool:
+    normalized = " ".join(text.lower().replace("ё", "е").split())
+    return bool(re.search(CONTRACT_CREATION_PATTERN, normalized, re.IGNORECASE))

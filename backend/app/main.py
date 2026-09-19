@@ -20,7 +20,12 @@ from app.catalogs.contracts import (
     describe_contract_type,
     identify_contract_type,
 )
-from app.catalogs.chat_intents import detect_contract_message_intent, strip_addition_command
+from app.catalogs.chat_intents import (
+    detect_contract_message_intent,
+    is_contract_creation_request,
+    is_clearly_unrelated_to_contract,
+    strip_addition_command,
+)
 from app.db.base import Base
 from app.db.session import SessionLocal, engine, get_db
 from app.models.entities import (
@@ -2585,6 +2590,11 @@ async def send_message(
 ):
     session = get_accessible_session(db, session_id, user)
     check_daily_rate_limit(db, request, "chat_message", user=user)
+    if len(payload.content) > 4000:
+        raise HTTPException(
+            status_code=400,
+            detail="Сообщение слишком длинное. Сформулируйте вопрос или изменение договора короче 4000 знаков.",
+        )
 
     normalized_content = payload.content.strip().upper()
     is_dispute = normalized_content.startswith("СПОР")
@@ -2634,6 +2644,34 @@ async def send_message(
         session.title = infer_session_title(title_source)
     db.add(Message(session_id=session.id, role=MessageRole.user, content=payload.content))
     db.flush()
+
+    off_topic_after_contract = (
+        latest_version_before_answer is not None
+        and is_clearly_unrelated_to_contract(payload.content)
+    )
+    last_initial_reply = last_assistant_message(prior_messages).lower()
+    is_clarification_reply = (
+        latest_version_before_answer is None
+        and "уточните" in last_initial_reply
+    )
+    invalid_initial_request = (
+        latest_version_before_answer is None
+        and not is_contract_creation_request(payload.content)
+        and not is_clarification_reply
+    )
+    if (
+        session.status != SessionStatus.finalized
+        and contract_message_intent != "agreement"
+        and (off_topic_after_contract or invalid_initial_request)
+    ):
+        answer = (
+            "Не понял, как это относится к договору. Я отвечаю только на вопросы по текущему договору, "
+            "помогаю уточнять его условия и готовить согласование. Чтобы начать, напишите, какой договор нужно составить."
+        )
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        record_analytics_event(db, "off_topic_message_rejected", session=session, user=user)
+        db.commit()
+        return {"content": answer, "contract_saved": False, "reasoning": "", "next_action": "off_topic"}
 
     if session.status == SessionStatus.finalized and is_dispute_response:
         notice_marker = next(
@@ -3049,6 +3087,9 @@ async def send_message(
                         "role": "system",
                         "text": (
                             "Ты AI-Арбитр. Пользователь задает вопрос по уже подготовленному договору. "
+                            "Отвечай только по существу текущего договора, его исполнению и применимому праву. "
+                            "Не поддерживай общую беседу и не выполняй посторонние просьбы. Если запрос не связан "
+                            "с договором, ответь только: «Не понял, как это относится к договору». "
                             "Ответь на последний вопрос пользователя с учетом предыдущего диалога. "
                             "Если последний вопрос является уточнением, восстанови контекст из истории. "
                             "Запрещено возвращать полный текст договора, "
