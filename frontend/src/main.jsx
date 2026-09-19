@@ -744,6 +744,8 @@ function App() {
   const ownerFormRef = useRef(null);
   const agreementRef = useRef(null);
   const pendingInviteResumeRef = useRef(false);
+  const sessionRestoreDoneRef = useRef(false);
+  const sessionLoadRequestRef = useRef(0);
   const gestureRef = useRef({ x: 0, y: 0 });
 
   const reviewToken = getReviewTokenFromPath();
@@ -908,6 +910,7 @@ function App() {
     const targetSession = sessions.find((session) => session.id === pendingInvite.sessionId);
     if (!targetSession) return;
     pendingInviteResumeRef.current = true;
+    sessionRestoreDoneRef.current = true;
     setCurrentSession(targetSession);
     setPartyEmail(pendingInvite.partyEmail || "");
     setCreatorLegalRole(pendingInvite.creatorLegalRole || "");
@@ -927,16 +930,18 @@ function App() {
   }, [currentSession?.id]);
 
   useEffect(() => {
+    if (sessionRestoreDoneRef.current || !sessions.length) return;
     const requestedSessionId =
       new URLSearchParams(window.location.search).get("session") || localStorage.getItem(LAST_SESSION_KEY);
+    sessionRestoreDoneRef.current = true;
     if (!requestedSessionId || currentSession?.id === requestedSessionId) return;
     const requestedSession = sessions.find((session) => session.id === requestedSessionId);
     if (requestedSession) {
       setCurrentSession(requestedSession);
-    } else if (sessions.length) {
+    } else {
       localStorage.removeItem(LAST_SESSION_KEY);
     }
-  }, [sessions, currentSession?.id]);
+  }, [sessions]);
 
   useEffect(() => {
     if (!currentSession?.id || window.location.pathname !== "/") return;
@@ -1067,12 +1072,17 @@ function App() {
   }
 
   async function loadSession(sessionId) {
+    const requestId = sessionLoadRequestRef.current + 1;
+    sessionLoadRequestRef.current = requestId;
     setAppNotice("");
     const response = await fetch(`${API_URL}/sessions/${sessionId}`, { credentials: "include" });
-    if (!response.ok) return;
+    if (!response.ok || requestId !== sessionLoadRequestRef.current) return;
     const detail = await response.json();
+    if (requestId !== sessionLoadRequestRef.current) return;
     setSessionDetail(detail);
-    setCurrentSession(detail.session);
+    setCurrentSession((current) => (
+      current?.id === detail.session?.id ? { ...current, ...detail.session } : detail.session
+    ));
     setCreatorLegalRole(detail.session?.party_1_legal_role || "");
     setMessages(detail.messages || []);
   }
