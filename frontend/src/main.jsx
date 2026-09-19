@@ -650,6 +650,7 @@ function App() {
   const [inviteLink, setInviteLink] = useState("");
   const [appNotice, setAppNotice] = useState("");
   const [partyEmail, setPartyEmail] = useState("");
+  const [emailSuggestions, setEmailSuggestions] = useState([]);
   const [creatorLegalRole, setCreatorLegalRole] = useState("");
   const [deleteCandidateId, setDeleteCandidateId] = useState("");
   const [chatMode, setChatMode] = useState("idle");
@@ -805,6 +806,30 @@ function App() {
   useEffect(() => {
     localStorage.setItem("ai-arbitr-model", selectedModel);
   }, [selectedModel]);
+
+  useEffect(() => {
+    if (isGuest || partyEmail.trim().length < 2) {
+      setEmailSuggestions([]);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_URL}/contacts?q=${encodeURIComponent(partyEmail.trim())}`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        const data = await response.json().catch(() => []);
+        setEmailSuggestions(response.ok && Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (error.name !== "AbortError") setEmailSuggestions([]);
+      }
+    }, 180);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [partyEmail, isGuest]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -1630,8 +1655,8 @@ function App() {
                   onClick={() => {
                     setReviewFormOpen(true);
                     setReviewConfirmation({
-                      title: "Данные для подписания",
-                      message: "Заполните реквизиты и подтвердите согласие на обработку персональных данных.",
+                      title: "Проверка реквизитов",
+                      message: "Проверьте реквизиты и при необходимости исправьте примерные данные. Все верно?",
                     });
                   }}
                 >
@@ -1661,6 +1686,7 @@ function App() {
                       value={reviewForm.organizationName}
                       onChange={(event) => setReviewForm((form) => ({ ...form, organizationName: event.target.value }))}
                       placeholder="Наименование организации или ИП"
+                      autoComplete="organization"
                       required
                     />
                   )}
@@ -1668,6 +1694,7 @@ function App() {
                     value={reviewForm.fullName}
                     onChange={(event) => setReviewForm((form) => ({ ...form, fullName: event.target.value }))}
                     placeholder={reviewForm.partyType === "business" ? "ФИО подписанта" : "Фамилия Имя Отчество"}
+                    autoComplete="name"
                     required
                   />
                   {reviewForm.partyType === "individual" ? (
@@ -1675,6 +1702,7 @@ function App() {
                     value={reviewForm.passport}
                     onChange={(event) => setReviewForm((form) => ({ ...form, passport: event.target.value }))}
                     placeholder="Паспорт: 0000 000000"
+                    autoComplete="off"
                     inputMode="numeric"
                     pattern="[0-9]{4} ?[0-9]{6}"
                     required
@@ -1703,11 +1731,13 @@ function App() {
                     value={reviewForm.phone}
                     onChange={(event) => setReviewForm((form) => ({ ...form, phone: event.target.value }))}
                     placeholder="Телефон"
+                    autoComplete="tel"
                     required
                   />
                   <input
                     value={reviewForm.email}
                     placeholder="email@example.com"
+                    autoComplete="email"
                     readOnly
                     aria-readonly="true"
                     required
@@ -2287,7 +2317,7 @@ function App() {
                           <button
                             onClick={() => {
                               setOwnerSigningOpen(true);
-                              setAppNotice("Заполните реквизиты первой стороны и подтвердите подпись.");
+                              setAppNotice("Проверьте реквизиты и при необходимости исправьте примерные данные. Все верно?");
                             }}
                           >
                             <Check size={16} /> Подписать со своей стороны
@@ -2300,19 +2330,19 @@ function App() {
                               <button type="button" className={ownerForm.partyType === "business" ? "active" : ""} onClick={() => setOwnerForm((form) => ({ ...form, partyType: "business" }))}>Организация / ИП</button>
                             </div>
                             {ownerForm.partyType === "business" && (
-                              <input value={ownerForm.organizationName} onChange={(event) => setOwnerForm((form) => ({ ...form, organizationName: event.target.value }))} placeholder="Наименование организации или ИП" required />
+                              <input value={ownerForm.organizationName} onChange={(event) => setOwnerForm((form) => ({ ...form, organizationName: event.target.value }))} placeholder="Наименование организации или ИП" autoComplete="organization" required />
                             )}
-                            <input value={ownerForm.fullName} onChange={(event) => setOwnerForm((form) => ({ ...form, fullName: event.target.value }))} placeholder={ownerForm.partyType === "business" ? "ФИО подписанта" : "Фамилия Имя Отчество"} required />
+                            <input value={ownerForm.fullName} onChange={(event) => setOwnerForm((form) => ({ ...form, fullName: event.target.value }))} placeholder={ownerForm.partyType === "business" ? "ФИО подписанта" : "Фамилия Имя Отчество"} autoComplete="name" required />
                             {ownerForm.partyType === "individual" ? (
-                              <input value={ownerForm.passport} onChange={(event) => setOwnerForm((form) => ({ ...form, passport: event.target.value }))} placeholder="Паспорт: 0000 000000" inputMode="numeric" pattern="[0-9]{4} ?[0-9]{6}" required />
+                              <input value={ownerForm.passport} onChange={(event) => setOwnerForm((form) => ({ ...form, passport: event.target.value }))} placeholder="Паспорт: 0000 000000" autoComplete="off" inputMode="numeric" pattern="[0-9]{4} ?[0-9]{6}" required />
                             ) : (
                               <>
                                 <input value={ownerForm.inn} onChange={(event) => setOwnerForm((form) => ({ ...form, inn: event.target.value }))} placeholder="ИНН" inputMode="numeric" pattern="[0-9]{10}|[0-9]{12}" required />
                                 <input value={ownerForm.ogrn} onChange={(event) => setOwnerForm((form) => ({ ...form, ogrn: event.target.value }))} placeholder="ОГРН или ОГРНИП" inputMode="numeric" pattern="[0-9]{13}|[0-9]{15}" required />
                               </>
                             )}
-                            <input value={ownerForm.phone} onChange={(event) => setOwnerForm((form) => ({ ...form, phone: event.target.value }))} placeholder="Телефон" required />
-                            <input value={email} readOnly aria-readonly="true" />
+                            <input value={ownerForm.phone} onChange={(event) => setOwnerForm((form) => ({ ...form, phone: event.target.value }))} placeholder="Телефон" autoComplete="tel" required />
+                            <input value={email} autoComplete="email" readOnly aria-readonly="true" />
                             <label className="checkbox-row">
                               <input type="checkbox" checked={ownerForm.accepted} onChange={(event) => setOwnerForm((form) => ({ ...form, accepted: event.target.checked }))} required />
                               <ConsentText />
@@ -2390,7 +2420,15 @@ function App() {
                             value={partyEmail}
                             onChange={(event) => setPartyEmail(event.target.value)}
                             placeholder="email второй стороны"
+                            type="email"
+                            autoComplete="email"
+                            list="contract-email-suggestions"
                           />
+                          <datalist id="contract-email-suggestions">
+                            {emailSuggestions.map((contact) => (
+                              <option key={contact.email} value={contact.email} />
+                            ))}
+                          </datalist>
                           <button onClick={createInvite} disabled={inviteSending}>
                             {inviteSending ? "Отправляю..." : "Отправить ссылку согласования"}
                           </button>

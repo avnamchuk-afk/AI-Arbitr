@@ -1942,6 +1942,42 @@ def list_sessions(user: User = Depends(get_current_user), db: Session = Depends(
     return [serialize_session_summary(db, session, user) for session in sessions]
 
 
+@app.get("/contacts")
+def list_contract_contacts(
+    q: str = "",
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    normalized_query = q.strip().lower()
+    accessible_session_ids = {
+        row[0]
+        for row in db.query(ContractParticipant.session_id)
+        .filter(ContractParticipant.user_id == user.id)
+        .all()
+    }
+    if not accessible_session_ids:
+        return []
+    participants = (
+        db.query(ContractParticipant)
+        .filter(ContractParticipant.session_id.in_(accessible_session_ids))
+        .all()
+    )
+    contacts = []
+    seen = set()
+    for participant in participants:
+        contact = participant.user
+        if contact is None or contact.id == user.id or is_guest_user(contact):
+            continue
+        email = contact.email.lower()
+        if normalized_query and normalized_query not in email:
+            continue
+        if email in seen:
+            continue
+        seen.add(email)
+        contacts.append({"email": contact.email})
+    return contacts[:8]
+
+
 @app.get("/sessions/{session_id}")
 def get_session(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = get_accessible_session(db, session_id, user)
