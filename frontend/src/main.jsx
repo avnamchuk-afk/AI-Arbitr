@@ -41,6 +41,7 @@ const MIN_REGULAR_THINKING_MS = 1500;
 const DEMO_REVIEW_PASSPORT = "1111 111111";
 const DEFAULT_AI_MODEL = "qwen";
 const LAST_SESSION_KEY = "ai-arbitr-current-session";
+const PENDING_INVITE_KEY = "ai-arbitr-pending-invite";
 const CONSENT_VERSION = "1.0";
 const sessionModeKey = (sessionId) => `ai-arbitr-chat-mode:${sessionId}`;
 
@@ -695,6 +696,7 @@ function App() {
   const reviewFormRef = useRef(null);
   const ownerFormRef = useRef(null);
   const agreementRef = useRef(null);
+  const pendingInviteResumeRef = useRef(false);
   const gestureRef = useRef({ x: 0, y: 0 });
 
   const reviewToken = getReviewTokenFromPath();
@@ -820,6 +822,31 @@ function App() {
     if (!authed) return;
     loadSessions();
   }, [authed]);
+
+  useEffect(() => {
+    if (!authed || isGuest || !sessions.length || pendingInviteResumeRef.current) return;
+    const rawPendingInvite = localStorage.getItem(PENDING_INVITE_KEY);
+    if (!rawPendingInvite) return;
+    let pendingInvite;
+    try {
+      pendingInvite = JSON.parse(rawPendingInvite);
+    } catch {
+      localStorage.removeItem(PENDING_INVITE_KEY);
+      return;
+    }
+    const targetSession = sessions.find((session) => session.id === pendingInvite.sessionId);
+    if (!targetSession) return;
+    pendingInviteResumeRef.current = true;
+    setCurrentSession(targetSession);
+    setPartyEmail(pendingInvite.partyEmail || "");
+    setCreatorLegalRole(pendingInvite.creatorLegalRole || "");
+    setChatMode("agree");
+    setAppNotice("Договор сохранен. Продолжаю отправку ссылки контрагенту...");
+    sendInviteRequest(targetSession.id, pendingInvite.partyEmail, pendingInvite.creatorLegalRole).then((sent) => {
+      if (sent) localStorage.removeItem(PENDING_INVITE_KEY);
+      pendingInviteResumeRef.current = false;
+    });
+  }, [authed, isGuest, sessions]);
 
   useEffect(() => {
     if (!currentSession) return;
@@ -1044,6 +1071,11 @@ function App() {
         return;
       }
       if (endpoint === "/auth/quick-register") {
+        if (data.verification_required) {
+          setLoginNotice(data.message || "Откройте ссылку из письма, чтобы сохранить договор и продолжить отправку.");
+          setDevLink(data.dev_link || "");
+          return;
+        }
         setEmail(data.email || email);
         setUserId(data.id || userId);
         setIsGuest(false);
@@ -1052,7 +1084,8 @@ function App() {
         setAfterAuthAction("");
         setLoginNotice("");
         setAppNotice(`Шаг 1 готов: договор сохранен за ${data.email || email}. Шаг 2: отправляю ссылку второй стороне.`);
-        await sendInviteRequest();
+        const sent = await sendInviteRequest();
+        if (sent) localStorage.removeItem(PENDING_INVITE_KEY);
         loadSessions();
         return;
       }
@@ -1243,38 +1276,43 @@ function App() {
     }
   }
 
-  async function sendInviteRequest() {
-    if (!currentSession || inviteSending) return;
+  async function sendInviteRequest(
+    sessionId = currentSession?.id,
+    recipientEmail = partyEmail,
+    legalRole = creatorLegalRole,
+  ) {
+    if (!sessionId || inviteSending) return false;
     setInviteSending(true);
-    setAppNotice(partyEmail ? `Отправляю ссылку на ${partyEmail}...` : "Готовлю ссылку согласования...");
+    setAppNotice(recipientEmail ? `Отправляю ссылку на ${recipientEmail}...` : "Готовлю ссылку согласования...");
     try {
-      const response = await fetch(`${API_URL}/sessions/${currentSession.id}/invite`, {
+      const response = await fetch(`${API_URL}/sessions/${sessionId}/invite`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: partyEmail || null,
-          creator_legal_role: creatorLegalRole,
+          email: recipientEmail || null,
+          creator_legal_role: legalRole,
         }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         setAppNotice(data.detail || "Не удалось отправить ссылку согласования.");
-        return;
+        return false;
       }
       setInviteLink(data.invite_link);
       setAppNotice(
         data.sent
-          ? `Ссылка отправлена на ${data.sent_to || partyEmail}. Копия письма отправлена на ${data.copy_to || "ваш email"}.`
+          ? `Ссылка отправлена на ${data.sent_to || recipientEmail}. Копия письма отправлена на ${data.copy_to || "ваш email"}.`
           : "SMTP пока не настроен. Скопируйте ссылку просмотра и отправьте второй стороне вручную."
       );
       if (data.sent) {
         setInviteConfirmation(
-          `Получатель: ${data.sent_to || partyEmail}. Попросите вторую сторону проверить почту. Письмо могло попасть в папку «Спам».`
+          `Получатель: ${data.sent_to || recipientEmail}. Попросите вторую сторону проверить почту. Письмо могло попасть в папку «Спам».`
         );
       }
-      loadSession(currentSession.id);
+      loadSession(sessionId);
       loadSessions();
+      return true;
     } finally {
       setInviteSending(false);
     }
@@ -1290,6 +1328,11 @@ function App() {
       return;
     }
     if (isGuest) {
+      localStorage.setItem(PENDING_INVITE_KEY, JSON.stringify({
+        sessionId: currentSession.id,
+        partyEmail: partyEmail.trim(),
+        creatorLegalRole,
+      }));
       setAuthMode("register");
       setAfterAuthAction("invite");
       setAuthPromptTitle("Шаг 1. Сохранить договор");

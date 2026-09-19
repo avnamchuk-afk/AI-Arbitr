@@ -62,6 +62,7 @@ def ensure_runtime_schema() -> None:
             connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS cookies_accepted BOOLEAN NOT NULL DEFAULT FALSE"))
             connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_version VARCHAR(32)"))
             connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS consented_at TIMESTAMPTZ"))
+            connection.execute(text("ALTER TABLE auth_tokens ADD COLUMN IF NOT EXISTS guest_user_id UUID REFERENCES users(id)"))
             connection.execute(
                 text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE")
             )
@@ -80,6 +81,9 @@ def ensure_runtime_schema() -> None:
             user_columns = connection.execute(text("PRAGMA table_info(users)")).fetchall()
             if not any(column[1] == "trusted_login_count" for column in user_columns):
                 connection.execute(text("ALTER TABLE users ADD COLUMN trusted_login_count INTEGER NOT NULL DEFAULT 0"))
+            auth_token_columns = connection.execute(text("PRAGMA table_info(auth_tokens)")).fetchall()
+            if not any(column[1] == "guest_user_id" for column in auth_token_columns):
+                connection.execute(text("ALTER TABLE auth_tokens ADD COLUMN guest_user_id VARCHAR(36)"))
             session_columns = connection.execute(text("PRAGMA table_info(sessions)")).fetchall()
             if not any(column[1] == "is_deleted" for column in session_columns):
                 connection.execute(text("ALTER TABLE sessions ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT 0"))
@@ -1720,7 +1724,12 @@ def create_guest(response: Response, db: Session = Depends(get_db)):
     return {"id": user.id, "email": "", "is_guest": True}
 
 
-def issue_magic_link(email: str, request: Request, db: Session) -> dict[str, str]:
+def issue_magic_link(
+    email: str,
+    request: Request,
+    db: Session,
+    guest_user_id: uuid.UUID | None = None,
+) -> dict[str, str]:
     check_daily_rate_limit(db, request, "magic_link", email=email)
     raw_token = generate_raw_token()
     db.add(
@@ -1728,6 +1737,7 @@ def issue_magic_link(email: str, request: Request, db: Session) -> dict[str, str
             email=email,
             token_hash=hash_token(raw_token),
             expires_at=token_expires_at(),
+            guest_user_id=guest_user_id,
         )
     )
     db.commit()
@@ -1776,6 +1786,7 @@ def register(
 @app.post("/auth/quick-register")
 def quick_register_guest(
     payload: RegisterRequest,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1791,7 +1802,10 @@ def quick_register_guest(
 
     existing_user = db.query(User).filter(User.email == payload.email).one_or_none()
     if existing_user is not None:
-        raise HTTPException(status_code=409, detail="Аккаунт с таким email уже есть. Войдите по ссылке из письма.")
+        result = issue_magic_link(payload.email, request, db, guest_user_id=current_user.id)
+        result["verification_required"] = True
+        result["message"] = "Аккаунт уже существует. Отправил ссылку для подтверждения и сохранения договора."
+        return result
 
     current_user.email = payload.email
     apply_user_consent(current_user)
@@ -1848,6 +1862,23 @@ def verify_magic_link(token: str, request: Request, db: Session = Depends(get_db
         user = User(email=auth_token.email)
         db.add(user)
         db.flush()
+
+    if auth_token.guest_user_id and auth_token.guest_user_id != user.id:
+        guest = db.get(User, auth_token.guest_user_id)
+        if guest is not None and is_guest_user(guest):
+            guest_sessions = db.query(ContractSession).filter(ContractSession.owner_user_id == guest.id).all()
+            for guest_session in guest_sessions:
+                guest_session.owner_user_id = user.id
+                creator = (
+                    db.query(ContractParticipant)
+                    .filter(
+                        ContractParticipant.session_id == guest_session.id,
+                        ContractParticipant.role == ParticipantRole.party_1,
+                    )
+                    .one_or_none()
+                )
+                if creator is not None:
+                    creator.user_id = user.id
 
     user.last_login_at = now_utc()
     user.trusted_login_count = 0
