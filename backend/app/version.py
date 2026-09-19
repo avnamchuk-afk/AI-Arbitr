@@ -1,4 +1,4 @@
-APP_VERSION = "0.8.1-beta"
+APP_VERSION = "0.8.2-beta"
 
 
 def identify_contract_template(content: str) -> tuple[str, str]:

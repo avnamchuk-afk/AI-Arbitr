@@ -61,15 +61,27 @@ const team = [
   ["София", "Behavioral Psychology"],
 ];
 
-const roadmap = [
-  ["Октябрь 2026", "Безопасность, надежность и доступность"],
+const completedRoadmap = [
+  ["MVP", "Чат создания и доработки договора"],
+  ["0.5", "Email-согласование и подпись обеих сторон"],
+  ["0.5", "Финальный PDF, справка и защищенный архив"],
+  ["0.5", "Типовая форма найма жилья и базовый сценарий спора"],
+  ["0.6", "Единая машина состояний договора"],
+  ["0.7", "Справочник типов, ролей и типовых форм"],
+  ["0.8", "Контекстные подсказки, поиск и единые UX-паттерны"],
+  ["0.8", "YandexGPT и Qwen с выбором модели"],
+];
+
+const futureRoadmap = [
+  ["Октябрь 2026", "Стабилизация, безопасность и мобильные E2E-тесты"],
   ["Январь 2027", "Расширение перечня нейросетей"],
   ["Март 2027", "Многосторонние договоры"],
   ["Май 2027", "Регулярная публикация аналитики"],
   ["Июль 2027", "Алгоритмы перекрестной проверки генерации"],
-  ["Сентябрь 2027", "Улучшение CJM и мобильного UX"],
+  ["Сентябрь 2027", "Улучшение мобильного UX по обратной связи"],
   ["Декабрь 2027", "Пакеты корпоративных документов"],
-  ["Февраль 2028", "Интеграции с ЭДО и бухгалтерией"],
+  ["Февраль 2028", "Интеграции с CRM, ЭДО и бухгалтерией"],
+  ["Март 2028", "Проверка и автозаполнение реквизитов через законно доступные источники"],
   ["Май 2028", "Расширение способов разрешения споров"],
   ["Сентябрь 2028", "Проверка репутации контрагента по агрегированной истории исполнения договоров в сервисе"],
   ["Октябрь 2028", "ЕАЭС/СНГ и трансграничные договоры"],
@@ -343,8 +355,17 @@ export default function LandingPage() {
       </Section>
 
       <Section eyebrow="Roadmap" title="AI-Arbitr сегодня и завтра">
-        <div className="landing-roadmap">
-          {roadmap.map(([date, text]) => <article key={`${date}-${text}`}><strong>{date}</strong><p>{text}</p></article>)}
+        <div className="roadmap-block completed">
+          <div className="roadmap-heading"><span>Готово</span><h3>Уже реализовано</h3></div>
+          <div className="landing-roadmap">
+            {completedRoadmap.map(([date, text]) => <article key={`${date}-${text}`}><strong>{date}</strong><p>{text}</p></article>)}
+          </div>
+        </div>
+        <div className="roadmap-block future">
+          <div className="roadmap-heading"><span>План</span><h3>В перспективе</h3></div>
+          <div className="landing-roadmap">
+            {futureRoadmap.map(([date, text]) => <article key={`${date}-${text}`}><strong>{date}</strong><p>{text}</p></article>)}
+          </div>
         </div>
         <div className="landing-future-cycle">
           <div>
