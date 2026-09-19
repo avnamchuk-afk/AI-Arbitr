@@ -33,6 +33,8 @@ import { APP_VERSION, APP_VERSION_SHORT } from "./version.js";
 import "./styles.css";
 
 const API_URL = window.__AI_ARBITR_CONFIG__?.apiUrl || "http://localhost:8000";
+const SUPPORT_EMAIL = "ai-arbitr@ya.ru";
+const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Обратная связь AI-Arbitr")}`;
 const TYPEWRITER_DELAY_MS = 10;
 const TYPEWRITER_CHUNK_SIZE = 4;
 const TYPEWRITER_MAX_STEPS = 90;
@@ -122,7 +124,7 @@ const PRIVACY_SECTIONS = [
     title: "9. Заключительные положения",
     items: [
       "9.1. Мы оставляем за собой право вносить изменения в настоящую Политику. Актуальная версия размещается на Сайте.",
-      "9.2. Контактная информация по вопросам обработки персональных данных: privacy@ai-arbitr.ru.",
+      `9.2. Контактная информация по вопросам обработки персональных данных: ${SUPPORT_EMAIL}.`,
       "9.3. Политика регулируется законодательством Российской Федерации.",
     ],
   },
@@ -547,6 +549,7 @@ function PrivacyPage() {
         <footer className="privacy-footer">
           <p>Дата последнего обновления: 18 сентября 2026 г.</p>
           <strong>Ai-arbitr — конфиденциальность по дизайну.</strong>
+          <a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a>
           <a href="/">Вернуться в сервис</a>
         </footer>
       </article>
@@ -571,6 +574,7 @@ function TermsPage() {
         ))}
         <footer className="privacy-footer">
           <a href="/privacy">Политика конфиденциальности</a>
+          <a href={SUPPORT_MAILTO}>Обратная связь · {SUPPORT_EMAIL}</a>
           <a href="/">Вернуться в сервис</a>
         </footer>
       </article>
@@ -2046,6 +2050,10 @@ function App() {
                   <dt>Версия</dt>
                   <dd>{APP_VERSION}</dd>
                 </div>
+                <div>
+                  <dt>Обратная связь</dt>
+                  <dd><a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a></dd>
+                </div>
               </dl>
             </section>
             <section className="team-section">
@@ -2253,7 +2261,7 @@ function App() {
         </div>
         <div className="sidebar-footer">
           <button onClick={() => setHelpOpen(true)}>Помощь / FAQ</button>
-          <a>Обратная связь</a>
+          <a href={SUPPORT_MAILTO}>Обратная связь · {SUPPORT_EMAIL}</a>
         </div>
       </aside>
       <section className="chat-area">
