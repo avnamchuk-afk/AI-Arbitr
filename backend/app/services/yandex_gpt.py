@@ -63,60 +63,78 @@ def is_unavailable_model_response(response: httpx.Response) -> bool:
     return any(marker in message for marker in ("model", "not found", "not supported", "permission", "access"))
 
 
+def model_fallback_order(model: str | None = None) -> tuple[str, ...]:
+    requested = (model or "yandexgpt").strip().lower()
+    if requested not in SUPPORTED_MODELS:
+        requested = "yandexgpt"
+    alternate = "qwen" if requested == "yandexgpt" else "yandexgpt"
+    return requested, alternate
+
+
+def should_try_fallback(response: httpx.Response) -> bool:
+    return response.status_code in {408, 429} or response.status_code >= 500 or is_unavailable_model_response(response)
+
+
 async def ask_yandex_gpt(messages: list[dict[str, str]], model: str | None = None) -> str:
     if not settings.yandex_gpt_api_key or not settings.yandex_gpt_folder_id:
         raise YandexGPTError("YandexGPT is not configured")
 
-    requested_model = (model or "yandexgpt").strip().lower()
     normalized_messages = ensure_system_message(messages)
-    payload = {
-        "modelUri": build_model_uri(requested_model),
-        "completionOptions": build_completion_options(include_reasoning=True),
-        "messages": normalized_messages,
-    }
     headers = {
         "Authorization": f"Api-Key {settings.yandex_gpt_api_key}",
         "Content-Type": "application/json",
         "x-folder-id": settings.yandex_gpt_folder_id,
     }
 
+    timeout = httpx.Timeout(90.0, connect=10.0)
+    last_error: Exception | None = None
     try:
-        timeout = httpx.Timeout(90.0, connect=10.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
-                json=payload,
-                headers=headers,
-            )
-            if is_unsupported_reasoning_response(response):
-                payload["completionOptions"] = build_completion_options(include_reasoning=False)
-                response = await client.post(
-                    "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
-                    json=payload,
-                    headers=headers,
-                )
-            if requested_model != "yandexgpt" and is_unavailable_model_response(response):
-                payload["modelUri"] = build_model_uri("yandexgpt")
-                payload["completionOptions"] = build_completion_options(include_reasoning=True)
-                response = await client.post(
-                    "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
-                    json=payload,
-                    headers=headers,
-                )
-                if is_unsupported_reasoning_response(response):
-                    payload["completionOptions"] = build_completion_options(include_reasoning=False)
+            for index, model_key in enumerate(model_fallback_order(model)):
+                payload = {
+                    "modelUri": build_model_uri(model_key),
+                    "completionOptions": build_completion_options(include_reasoning=True),
+                    "messages": normalized_messages,
+                }
+                try:
                     response = await client.post(
                         "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
                         json=payload,
                         headers=headers,
                     )
+                except (httpx.TimeoutException, httpx.HTTPError) as exc:
+                    last_error = exc
+                    if index == 0:
+                        continue
+                    break
+                if is_unsupported_reasoning_response(response):
+                    payload["completionOptions"] = build_completion_options(include_reasoning=False)
+                    try:
+                        response = await client.post(
+                            "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
+                            json=payload,
+                            headers=headers,
+                        )
+                    except (httpx.TimeoutException, httpx.HTTPError) as exc:
+                        last_error = exc
+                        if index == 0:
+                            continue
+                        break
+                if response.status_code < 400:
+                    try:
+                        data = response.json()
+                        return data["result"]["alternatives"][0]["message"]["text"]
+                    except (ValueError, KeyError, IndexError, TypeError) as exc:
+                        last_error = exc
+                        if index == 0:
+                            continue
+                        break
+                if index == 0 and should_try_fallback(response):
+                    continue
+                break
     except httpx.TimeoutException as exc:
-        raise YandexGPTError("YandexGPT response timed out") from exc
+        last_error = exc
     except httpx.HTTPError as exc:
-        raise YandexGPTError("YandexGPT API request failed") from exc
+        last_error = exc
 
-    if response.status_code >= 400:
-        raise YandexGPTError("YandexGPT API is unavailable")
-
-    data = response.json()
-    return data["result"]["alternatives"][0]["message"]["text"]
+    raise YandexGPTError("All configured language models are unavailable") from last_error
