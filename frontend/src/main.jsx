@@ -48,6 +48,7 @@ const LAST_SESSION_KEY = "ai-arbitr-current-session";
 const PENDING_INVITE_KEY = "ai-arbitr-pending-invite";
 const REVIEW_FORM_DRAFT_PREFIX = "ai-arbitr-review-form:";
 const OWNER_FORM_DRAFT_PREFIX = "ai-arbitr-owner-form:";
+const ACTIVE_VIEW_KEY = "ai-arbitr-active-view";
 const CONSENT_VERSION = "1.1";
 
 function apiErrorMessage(detail, fallback) {
@@ -67,6 +68,15 @@ function readSessionDraft(key, fallback) {
   } catch {
     sessionStorage.removeItem(key);
     return fallback;
+  }
+}
+
+function restoreActiveRouteBeforeRender() {
+  if (window.location.pathname !== "/" || window.location.search) return;
+  const savedView = readSessionDraft(ACTIVE_VIEW_KEY, {});
+  const routeIsFresh = Date.now() - Number(savedView.savedAt || 0) < 12 * 60 * 60 * 1000;
+  if (routeIsFresh && /^\/review\/[^/]+$/.test(savedView.path || "")) {
+    window.history.replaceState({}, "", savedView.path);
   }
 }
 
@@ -770,7 +780,7 @@ function App() {
   const sessionRestoreDoneRef = useRef(false);
   const sessionLoadRequestRef = useRef(0);
   const clearedOwnerDraftsRef = useRef(new Set());
-  const gestureRef = useRef({ x: 0, y: 0 });
+  const gestureRef = useRef({ x: 0, y: 0, startedAt: 0, ignored: true });
 
   const isPrivacyPath = window.location.pathname === "/privacy";
   const isTermsPath = window.location.pathname === "/terms";
@@ -854,6 +864,10 @@ function App() {
 
   useEffect(() => {
     if (!reviewToken) return;
+    sessionStorage.setItem(
+      ACTIVE_VIEW_KEY,
+      JSON.stringify({ path: window.location.pathname, savedAt: Date.now() })
+    );
     loadReview(reviewToken);
   }, [reviewToken]);
 
@@ -978,8 +992,11 @@ function App() {
 
   useEffect(() => {
     if (sessionRestoreDoneRef.current || !sessions.length) return;
+    const savedView = readSessionDraft(ACTIVE_VIEW_KEY, {});
     const requestedSessionId =
-      new URLSearchParams(window.location.search).get("session") || localStorage.getItem(LAST_SESSION_KEY);
+      new URLSearchParams(window.location.search).get("session")
+      || localStorage.getItem(LAST_SESSION_KEY)
+      || savedView.sessionId;
     sessionRestoreDoneRef.current = true;
     if (!requestedSessionId || currentSession?.id === requestedSessionId) return;
     const requestedSession = sessions.find((session) => session.id === requestedSessionId);
@@ -993,10 +1010,33 @@ function App() {
   useEffect(() => {
     if (!currentSession?.id || window.location.pathname !== "/") return;
     localStorage.setItem(LAST_SESSION_KEY, currentSession.id);
+    sessionStorage.setItem(
+      ACTIVE_VIEW_KEY,
+      JSON.stringify({ sessionId: currentSession.id, chatMode, savedAt: Date.now() })
+    );
     const url = new URL(window.location.href);
     url.searchParams.set("session", currentSession.id);
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [currentSession?.id]);
+  }, [currentSession?.id, chatMode]);
+
+  useEffect(() => {
+    function preserveActiveView(event) {
+      if (document.visibilityState !== "hidden" && event?.type !== "pagehide") return;
+      if (!currentSession?.id || window.location.pathname !== "/") return;
+      localStorage.setItem(LAST_SESSION_KEY, currentSession.id);
+      sessionStorage.setItem(
+        ACTIVE_VIEW_KEY,
+        JSON.stringify({ sessionId: currentSession.id, chatMode, savedAt: Date.now() })
+      );
+    }
+
+    document.addEventListener("visibilitychange", preserveActiveView);
+    window.addEventListener("pagehide", preserveActiveView);
+    return () => {
+      document.removeEventListener("visibilitychange", preserveActiveView);
+      window.removeEventListener("pagehide", preserveActiveView);
+    };
+  }, [currentSession?.id, chatMode]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -1111,6 +1151,7 @@ function App() {
       setReviewNotice("");
       setReviewConfirmation({ title: "Договор подписан", message: confirmation });
       sessionStorage.removeItem(reviewFormDraftKey(reviewToken));
+      sessionStorage.removeItem(ACTIVE_VIEW_KEY);
       setReviewData((current) => ({
         ...current,
         finalized: Boolean(data.finalized),
@@ -1274,6 +1315,7 @@ function App() {
     loadSessions();
     if (currentSession?.id === session.id) {
       localStorage.removeItem(LAST_SESSION_KEY);
+      sessionStorage.removeItem(ACTIVE_VIEW_KEY);
       window.history.replaceState({}, "", "/");
       setCurrentSession(null);
       setSessionDetail(null);
@@ -1518,6 +1560,7 @@ function App() {
     }
     if (currentSession) {
       localStorage.removeItem(LAST_SESSION_KEY);
+      sessionStorage.removeItem(ACTIVE_VIEW_KEY);
       window.history.replaceState({}, "", "/");
       setCurrentSession(null);
       setSessionDetail(null);
@@ -1540,20 +1583,33 @@ function App() {
   function handleTouchStart(event) {
     const touch = event.changedTouches?.[0];
     if (!touch) return;
-    gestureRef.current = { x: touch.clientX, y: touch.clientY };
+    gestureRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      startedAt: Date.now(),
+      ignored: touch.clientY >= window.innerHeight - 96 || document.visibilityState !== "visible",
+    };
   }
 
   function handleTouchEnd(event) {
     const touch = event.changedTouches?.[0];
     if (!touch) return;
-    const dx = touch.clientX - gestureRef.current.x;
-    const dy = touch.clientY - gestureRef.current.y;
-    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    const gesture = gestureRef.current;
+    gestureRef.current = { x: 0, y: 0, startedAt: 0, ignored: true };
+    if (gesture.ignored || Date.now() - gesture.startedAt > 900) return;
+    const dx = touch.clientX - gesture.x;
+    const dy = touch.clientY - gesture.y;
+    if (Math.abs(dx) < 90 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
     if (dx > 0) {
+      if (gesture.x > 32) return;
       goBack();
     } else {
       closeOverlay();
     }
+  }
+
+  function handleTouchCancel() {
+    gestureRef.current = { x: 0, y: 0, startedAt: 0, ignored: true };
   }
 
   function downloadCertificate() {
@@ -1917,7 +1973,7 @@ function App() {
   }
 
   return (
-    <main className="app-shell" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+    <main className="app-shell" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchCancel}>
       {consentBanner}
       <div className="mobile-topbar">
         <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
@@ -2247,6 +2303,7 @@ function App() {
               title="Выйти"
               onClick={() => {
                 localStorage.removeItem(LAST_SESSION_KEY);
+                sessionStorage.removeItem(ACTIVE_VIEW_KEY);
                 window.history.replaceState({}, "", "/");
                 fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" })
                   .then(() => fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" }))
@@ -2653,4 +2710,5 @@ function App() {
   );
 }
 
+restoreActiveRouteBeforeRender();
 createRoot(document.getElementById("root")).render(<App />);
