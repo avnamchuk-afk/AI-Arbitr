@@ -17,7 +17,7 @@ import {
 import { APP_VERSION_SHORT } from "./version.js";
 import "./landing.css";
 
-const appHref = "/";
+const appHref = `/?start=landing&v=${APP_VERSION_SHORT}`;
 
 const howToSteps = [
   "Опишите условия договора в чате с AI.",
