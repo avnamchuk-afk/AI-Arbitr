@@ -9,7 +9,7 @@
 - 2-4 GB RAM
 - 20 GB SSD
 - публичный IPv4
-- открыть входящие порты `22` и `80`
+- открыть входящие порты `22`, `80` и `443`
 
 ## 2. Установить Docker на VM
 
@@ -51,7 +51,7 @@ cp deploy/config.example.js deploy/config.js
 - `YANDEX_GPT_FOLDER_ID`
 - SMTP-поля, если нужны настоящие Magic Link письма
 
-В `deploy/config.js` заменить `YOUR_SERVER_IP` на тот же IP или домен.
+`deploy/config.js` по умолчанию использует относительный адрес `/api`, поэтому работает с IP, доменом и HTTPS-туннелем без отдельной настройки.
 
 Для быстрого теста без SMTP можно оставить SMTP пустым: на login-экране появится dev-ссылка входа.
 
@@ -83,4 +83,4 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 ## HTTPS
 
-Для публичного теста по IP достаточно HTTP. Для домена и настоящих secure cookies нужно добавить HTTPS через Let's Encrypt или Yandex Certificate Manager.
+Для публичного теста используется HTTPS. Временный стенд может работать через Cloudflare Quick Tunnel, но такой адрес не имеет гарантии постоянства. Для стабильной публичной ссылки нужен собственный домен и сертификат Let's Encrypt/Yandex Certificate Manager либо именованный Cloudflare Tunnel.

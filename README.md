@@ -4,16 +4,16 @@
 
 Платформа создана для защиты интересов физлиц, самозанятых, ИП и представителей МСП, для которых классический судебный процесс по мелким сделкам (до 100 000 рублей) экономически нецелесообразен.
 
-🌐 **Лендинг проекта:** [http://51.250.95.80/landing](http://51.250.95.80/landing)
+🌐 **Лендинг проекта:** [https://valued-period-aid-heroes.trycloudflare.com/landing](https://valued-period-aid-heroes.trycloudflare.com/landing)
 
-🤖 **Демо-стенд (MVP):** [http://51.250.95.80](http://51.250.95.80)  
-*Примечание: Инстанс развернут на виртуальной машине в Yandex Cloud и работает в режиме публичного тестирования. Пожалуйста, используйте вымышленные данные для тестов.*
+🤖 **Демо-стенд (MVP):** [https://valued-period-aid-heroes.trycloudflare.com](https://valued-period-aid-heroes.trycloudflare.com)
+*Примечание: инстанс развернут на виртуальной машине в Yandex Cloud, а временный HTTPS-адрес предоставлен Cloudflare Quick Tunnel для публичного тестирования. До подключения постоянного домена используйте вымышленные данные.*
 
 **Текущая версия:** `0.10.0-beta`. История релизов ведется в [CHANGELOG.md](CHANGELOG.md). Каждая новая версия договора фиксирует версию сервиса и редакцию использованного шаблона; старые документы без такой метки обозначаются как `legacy`.
 
 Обязательные продуктовые принципы для всех изменений закреплены в [AGENTS.md](AGENTS.md) и [общесистемных правилах интерфейса](docs/product-interface-rules.md).
 
-**Контроль логики:** [дорожная карта](docs/roadmap.md), [архитектура процесса](docs/workflow-architecture.md), [модульность и отказоустойчивость](docs/resilience-and-modules.md), [справочник договоров](docs/contract-type-catalog.md), [UX-паттерны](docs/ux-pattern-catalog.md), [схема жизненного цикла](docs/contract-lifecycle.md), [общесистемные правила интерфейса](docs/product-interface-rules.md) и [E2E-протокол проверки](docs/e2e-test-protocol.md). Перед ручным прогоном используется `python3 scripts/lifecycle_preflight.py http://51.250.95.80`.
+**Контроль логики:** [дорожная карта](docs/roadmap.md), [архитектура процесса](docs/workflow-architecture.md), [модульность и отказоустойчивость](docs/resilience-and-modules.md), [справочник договоров](docs/contract-type-catalog.md), [UX-паттерны](docs/ux-pattern-catalog.md), [схема жизненного цикла](docs/contract-lifecycle.md), [общесистемные правила интерфейса](docs/product-interface-rules.md) и [E2E-протокол проверки](docs/e2e-test-protocol.md). Перед ручным прогоном используется `python3 scripts/lifecycle_preflight.py https://valued-period-aid-heroes.trycloudflare.com`.
 
 ---
 
