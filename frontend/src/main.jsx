@@ -676,10 +676,8 @@ function App() {
   const [inviteConfirmation, setInviteConfirmation] = useState("");
   const storedConsentVersion = localStorage.getItem("ai-arbitr-consent-version");
   const [accepted, setAccepted] = useState(ACCEPTED_CONSENT_VERSIONS.has(storedConsentVersion));
-  const [cookieConsentVisible, setCookieConsentVisible] = useState(
-    !ACCEPTED_CONSENT_VERSIONS.has(storedConsentVersion)
-  );
   const [authed, setAuthed] = useState(false);
+  const [authError, setAuthError] = useState("");
   const [sessions, setSessions] = useState([]);
   const [currentSession, setCurrentSession] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -767,7 +765,6 @@ function App() {
         if (response.ok) {
           if (data.consent_required || !ACCEPTED_CONSENT_VERSIONS.has(data.consent_version)) {
             setAccepted(false);
-            setCookieConsentVisible(true);
           }
           setEmail(data.email);
           setUserId(data.id);
@@ -776,20 +773,12 @@ function App() {
           return;
         }
         if (data.detail?.code === "magic_link_required") {
-          setEmail(data.detail.email || "");
-          setAuthMode("login");
-          setLoginNotice(data.detail.message || "Для безопасности подтвердите вход по ссылке из письма.");
-          setAuthed(false);
+          await enterAsGuest();
           return;
         }
-        const guestResponse = await fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" });
-        const guest = await guestResponse.json();
-        setEmail(guest.email || "");
-        setUserId(guest.id);
-        setIsGuest(true);
-        setAuthed(true);
+        await enterAsGuest();
       } catch {
-        setAuthed(false);
+        setAuthError("Не удалось открыть рабочее пространство. Проверьте соединение и попробуйте еще раз.");
       } finally {
         setAuthReady(true);
       }
@@ -797,38 +786,16 @@ function App() {
     bootstrapAuth();
   }, [reviewToken, isPrivacyPath, isTermsPath, isLandingPath, isKnowledgePath]);
 
-  async function acceptUnifiedConsent() {
-    localStorage.setItem("ai-arbitr-consent-version", CONSENT_VERSION);
-    setAccepted(true);
-    setReviewForm((form) => ({ ...form, accepted: true }));
-    setOwnerForm((form) => ({ ...form, accepted: true }));
-    setCookieConsentVisible(false);
-    if (authed && !reviewToken) {
-      await fetch(`${API_URL}/auth/consent`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          service_rules_accepted: true,
-          privacy_accepted: true,
-          cookies_accepted: true,
-          consent_version: CONSENT_VERSION,
-        }),
-      }).catch(() => undefined);
-    }
+  async function enterAsGuest() {
+    setAuthError("");
+    const guestResponse = await fetch(`${API_URL}/auth/guest`, { method: "POST", credentials: "include" });
+    const guest = await guestResponse.json().catch(() => ({}));
+    if (!guestResponse.ok || !guest.id) throw new Error("guest_session_failed");
+    setEmail("");
+    setUserId(guest.id);
+    setIsGuest(true);
+    setAuthed(true);
   }
-
-  const consentBanner = cookieConsentVisible && !isPrivacyPath && !isTermsPath && (
-    <div className="consent-gate" role="dialog" aria-modal="true" aria-label="Согласие с правилами и cookies">
-    <aside className="consent-banner">
-      <div>
-        <strong>{storedConsentVersion ? "Правила обновлены" : "Перед началом работы"}</strong>
-        <p><ConsentText /></p>
-      </div>
-      <button type="button" onClick={acceptUnifiedConsent}>Принять и продолжить</button>
-    </aside>
-    </div>
-  );
 
   useEffect(() => {
     if (!reviewToken) return;
@@ -1664,11 +1631,11 @@ function App() {
     : "Напишите коротко, какой договор нужно составить";
 
   if (isLandingPath) {
-    return <><LandingPage />{consentBanner}</>;
+    return <LandingPage />;
   }
 
   if (isKnowledgePath) {
-    return <><KnowledgeBase />{consentBanner}</>;
+    return <KnowledgeBase />;
   }
 
   if (!authReady) {
@@ -1693,7 +1660,6 @@ function App() {
   if (reviewToken) {
     return (
       <main className="review-page">
-        {consentBanner}
         {reviewConfirmation && (
           <div className="invite-confirmation" role="status" aria-live="polite">
             <div>
@@ -1842,56 +1808,17 @@ function App() {
   if (!authed) {
     return (
       <main className="login-page">
-        {consentBanner}
-        <form className="login-form" onSubmit={login}>
+        <div className="login-form">
           <h1>AI-Арбитр</h1>
-          <div className="auth-switch" role="tablist" aria-label="Регистрация или вход">
-            <button
-              type="button"
-              className={authMode === "register" ? "active" : ""}
-              onClick={() => {
-                setAuthMode("register");
-                setLoginNotice("");
-                setDevLink("");
-              }}
-            >
-              Регистрация
-            </button>
-            <button
-              type="button"
-              className={authMode === "login" ? "active" : ""}
-              onClick={() => {
-                setAuthMode("login");
-                setLoginNotice("");
-                setDevLink("");
-              }}
-            >
-              Вход
-            </button>
-          </div>
-          <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder={FORM_HINTS.email} />
-          {authMode === "register" && (
-            <label className="checkbox-row">
-              <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
-              <ConsentText />
-            </label>
-          )}
-          <button>{authMode === "register" ? "Зарегистрироваться" : "Отправить ссылку для входа"}</button>
-          {loginNotice && <p className="notice">{loginNotice}</p>}
-          {devLink && (
-            <a className="dev-link" href={devLink}>
-              Dev-вход без SMTP
-            </a>
-          )}
-          <a href="/privacy">Политика конфиденциальности</a>
-        </form>
+          <p className="notice">{authError || "Открываю рабочее пространство..."}</p>
+          {authError && <button type="button" onClick={() => enterAsGuest().catch(() => undefined)}>Повторить</button>}
+        </div>
       </main>
     );
   }
 
   return (
     <main className="app-shell" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-      {consentBanner}
       <div className="mobile-topbar">
         <button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
           <Menu size={20} />

@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import sys
 import time
+from http.cookiejar import CookieJar
 from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 
 
 base_url = (sys.argv[1] if len(sys.argv) > 1 else "http://51.250.95.80").rstrip("/")
@@ -50,6 +51,21 @@ for route in routes:
         print(f"PASS {route}")
     else:
         failures.append(f"{route} returned {status}")
+
+# A fresh visitor must receive a guest workspace without registration.
+guest_opener = build_opener(HTTPCookieProcessor(CookieJar()))
+try:
+    guest_request = Request(f"{base_url}/api/auth/guest", data=b"", method="POST")
+    with guest_opener.open(guest_request, timeout=15) as response:
+        guest = json.loads(response.read())
+    with guest_opener.open(f"{base_url}/api/auth/me", timeout=15) as response:
+        current_user = json.loads(response.read())
+    if not guest.get("is_guest") or not current_user.get("is_guest"):
+        failures.append("fresh visitor was not authenticated as guest")
+    else:
+        print("PASS frictionless guest entry")
+except (HTTPError, URLError, OSError, ValueError) as error:
+    failures.append(f"guest entry failed: {error}")
 
 if failures:
     for failure in failures:
