@@ -746,6 +746,7 @@ function App() {
   const sessionRestoreDoneRef = useRef(false);
   const sessionLoadRequestRef = useRef(0);
   const gestureRef = useRef({ x: 0, y: 0 });
+  const landingEntryRef = useRef(new URLSearchParams(window.location.search).get("start") === "landing");
 
   const reviewToken = getReviewTokenFromPath();
   const isPrivacyPath = window.location.pathname === "/privacy";
@@ -865,7 +866,7 @@ function App() {
   }, [authed]);
 
   useEffect(() => {
-    if (!authed || isGuest || !sessions.length || pendingInviteResumeRef.current) return;
+    if (landingEntryRef.current || !authed || isGuest || !sessions.length || pendingInviteResumeRef.current) return;
     const rawPendingInvite = localStorage.getItem(PENDING_INVITE_KEY);
     if (!rawPendingInvite) return;
     let pendingInvite;
@@ -899,8 +900,17 @@ function App() {
 
   useEffect(() => {
     if (sessionRestoreDoneRef.current || !sessions.length) return;
-    const requestedSessionId =
-      new URLSearchParams(window.location.search).get("session") || localStorage.getItem(LAST_SESSION_KEY);
+    const url = new URL(window.location.href);
+    if (landingEntryRef.current) {
+      sessionRestoreDoneRef.current = true;
+      landingEntryRef.current = false;
+      localStorage.removeItem(LAST_SESSION_KEY);
+      url.searchParams.delete("start");
+      url.searchParams.delete("v");
+      window.history.replaceState({ aiArbitrView: "start" }, "", `${url.pathname}${url.search}${url.hash}`);
+      return;
+    }
+    const requestedSessionId = url.searchParams.get("session") || localStorage.getItem(LAST_SESSION_KEY);
     sessionRestoreDoneRef.current = true;
     if (!requestedSessionId || currentSession?.id === requestedSessionId) return;
     const requestedSession = sessions.find((session) => session.id === requestedSessionId);
