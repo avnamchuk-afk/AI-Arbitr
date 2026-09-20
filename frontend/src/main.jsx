@@ -915,9 +915,45 @@ function App() {
     if (!currentSession?.id || window.location.pathname !== "/") return;
     localStorage.setItem(LAST_SESSION_KEY, currentSession.id);
     const url = new URL(window.location.href);
+    const previousSessionId = url.searchParams.get("session");
     url.searchParams.set("session", currentSession.id);
-    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    url.searchParams.delete("start");
+    url.searchParams.delete("v");
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    if (previousSessionId === currentSession.id) {
+      window.history.replaceState(
+        { ...window.history.state, aiArbitrView: "session", sessionId: currentSession.id },
+        "",
+        nextUrl,
+      );
+    } else {
+      window.history.pushState(
+        { aiArbitrView: "session", sessionId: currentSession.id },
+        "",
+        nextUrl,
+      );
+    }
   }, [currentSession?.id]);
+
+  useEffect(() => {
+    function restoreBrowserView() {
+      if (window.location.pathname !== "/") return;
+      const sessionId = new URLSearchParams(window.location.search).get("session");
+      if (!sessionId) {
+        localStorage.removeItem(LAST_SESSION_KEY);
+        setCurrentSession(null);
+        setSessionDetail(null);
+        setMessages([]);
+        setInviteLink("");
+        setChatMode("idle");
+        return;
+      }
+      const target = sessions.find((session) => session.id === sessionId);
+      if (target) setCurrentSession(target);
+    }
+    window.addEventListener("popstate", restoreBrowserView);
+    return () => window.removeEventListener("popstate", restoreBrowserView);
+  }, [sessions]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -1438,13 +1474,17 @@ function App() {
       return true;
     }
     if (currentSession) {
-      localStorage.removeItem(LAST_SESSION_KEY);
-      window.history.replaceState({}, "", "/");
-      setCurrentSession(null);
-      setSessionDetail(null);
-      setMessages([]);
-      setInviteLink("");
-      setChatMode("idle");
+      if (window.history.state?.aiArbitrView === "session") {
+        window.history.back();
+      } else {
+        localStorage.removeItem(LAST_SESSION_KEY);
+        window.history.replaceState({}, "", "/");
+        setCurrentSession(null);
+        setSessionDetail(null);
+        setMessages([]);
+        setInviteLink("");
+        setChatMode("idle");
+      }
       return true;
     }
     return false;
