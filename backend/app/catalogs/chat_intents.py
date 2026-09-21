@@ -23,6 +23,23 @@ AGREEMENT_PHRASES = {
     "согласовать версию",
 }
 
+SHOW_CONTRACT_PHRASES = {
+    "покажи договор",
+    "покажи полный текст",
+    "полный текст",
+    "полный текст договора",
+    "покажи текущую версию",
+    "текущая версия",
+    "текущую версию",
+}
+
+ROLLBACK_PHRASES = {
+    "верни предыдущую версию",
+    "вернуться к предыдущей версии",
+    "откати изменение",
+    "отмени последнее изменение",
+}
+
 OFF_TOPIC_EXACT_PHRASES = {
     "привет",
     "здравствуй",
@@ -64,6 +81,10 @@ PROMPT_ABUSE_PATTERNS = (
 
 def detect_contract_message_intent(text: str) -> str:
     normalized = " ".join(text.lower().replace("ё", "е").split())
+    if normalized.rstrip(".!?") in SHOW_CONTRACT_PHRASES:
+        return "show_contract"
+    if normalized.rstrip(".!?") in ROLLBACK_PHRASES:
+        return "rollback"
     if any(re.search(pattern, normalized) for pattern in ADDITION_PATTERNS):
         return "addition"
     if normalized.rstrip(".!?") in AGREEMENT_PHRASES:

@@ -1099,7 +1099,9 @@ def apply_ephemeral_party_data(
         contract_text,
         flags=re.IGNORECASE,
     )
-    legal_role = legal_role or ("Наниматель" if participant_role == ParticipantRole.party_2 else "Наймодатель")
+    contract_roles = identify_contract_type(contract_text, content=True).roles
+    role_index = 1 if participant_role == ParticipantRole.party_2 else 0
+    legal_role = legal_role or contract_roles[role_index]
     passport_digits = re.sub(r"\D", "", payload.passport)
     lines = updated.splitlines()
     replaced_requisites = False
@@ -1118,7 +1120,7 @@ def apply_ephemeral_party_data(
         break
     updated = "\n".join(lines)
     section_label = legal_role.upper()
-    other_role = "Наймодатель" if legal_role == "Наниматель" else "Наниматель" if legal_role == "Наймодатель" else ""
+    other_role = contract_roles[1 - role_index]
     other_label = other_role.upper()
     passport_line = (
         f"Паспорт: серия {passport_digits[:4]} № {passport_digits[4:]}"
@@ -1327,7 +1329,12 @@ def build_rule_based_addition_review(requested_change: str) -> str | None:
     return None
 
 
-async def review_contract_addition(contract_text: str, requested_change: str, model: str | None) -> str:
+async def review_contract_addition(
+    contract_text: str,
+    requested_change: str,
+    model: str | None,
+    conversation: list[dict[str, str]] | None = None,
+) -> str:
     rule_based = build_rule_based_addition_review(requested_change)
     if rule_based:
         return rule_based
@@ -1345,6 +1352,7 @@ async def review_contract_addition(contract_text: str, requested_change: str, mo
                 "«Выберите: краткая, расширенная или пришлите свою редакцию». Не возвращай полный договор."
             ),
         },
+        *(conversation or []),
         {
             "role": "user",
             "text": (
@@ -1408,7 +1416,12 @@ async def propose_contract_norm(contract_text: str, last_answer: str, dialogue: 
     return await ask_yandex_gpt(prompt)
 
 
-async def propose_contract_norm_options(contract_text: str, last_answer: str, dialogue: str) -> str:
+async def propose_contract_norm_options(
+    contract_text: str,
+    last_answer: str,
+    dialogue: str,
+    conversation: list[dict[str, str]] | None = None,
+) -> str:
     rule_based = build_rule_based_contract_norm(dialogue)
     if rule_based:
         norm = rule_based.split("Предлагаю такую редакцию нормы:", 1)[-1]
@@ -1438,6 +1451,7 @@ async def propose_contract_norm_options(contract_text: str, last_answer: str, di
                 "Выберите: краткая, расширенная или пришлите свою редакцию."
             ),
         },
+        *(conversation or []),
         {
             "role": "user",
             "text": (
@@ -1463,19 +1477,14 @@ def extract_norm_option(options_text: str, option: str) -> str | None:
 
 
 def build_custom_norm_review(custom_text: str) -> str:
-    return (
-        "Редакция условия:\n\n"
-        f"{custom_text.strip()}\n\n"
-        "Фиксирую новый пункт договора.\n\n"
-        "Переходим к согласованию?"
-    )
+    return build_norm_saved_answer(custom_text)
 
 
 def build_norm_saved_answer(norm: str) -> str:
     return (
-        "Фиксирую новый пункт договора.\n\n"
-        f"{norm.strip()}\n\n"
-        "Переходим к согласованию?"
+        f"Внесено. {norm.strip()}\n\n"
+        "Что дальше: вернуться к предыдущей версии, пояснить отдельное положение "
+        "или зафиксировать версию и перейти к согласованию?"
     )
 
 
@@ -2305,6 +2314,17 @@ def format_recent_dialogue(messages: list[Message], limit: int = 8) -> str:
     )
 
 
+def llm_conversation(messages: list[Message], current_user_text: str | None = None) -> list[dict[str, str]]:
+    conversation = [
+        {"role": message.role.value, "text": message.content}
+        for message in messages
+        if message.role in {MessageRole.user, MessageRole.assistant}
+    ]
+    if current_user_text:
+        conversation.append({"role": "user", "text": current_user_text})
+    return conversation
+
+
 def ensure_demo_session(db: Session, user: User) -> None:
     existing = (
         db.query(ContractSession)
@@ -2848,7 +2868,42 @@ async def send_message(
     last_assistant_before_answer = last_assistant_message(prior_messages)
     last_assistant_lower = last_assistant_before_answer.lower()
 
-    if latest_version_before_answer is not None and contract_message_intent == "agreement":
+    if latest_version_before_answer is not None and contract_message_intent == "show_contract":
+        answer = (
+            f"Текущая версия № {latest_version_before_answer.version_number}\n\n"
+            f"{latest_version_before_answer.content}"
+        )
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {"content": answer, "contract_saved": False, "reasoning": "", "next_action": "show_contract"}
+
+    if latest_version_before_answer is not None and contract_message_intent == "rollback":
+        previous_version = (
+            db.query(ContractVersion)
+            .filter(
+                ContractVersion.session_id == session.id,
+                ContractVersion.version_number < latest_version_before_answer.version_number,
+            )
+            .order_by(ContractVersion.version_number.desc())
+            .first()
+        )
+        if previous_version is None:
+            answer = "Предыдущей версии пока нет. Текущая версия — № 1."
+            saved = False
+        else:
+            restored = save_contract_version(db, session, previous_version.content)
+            answer = f"Внесено. Версия № {restored.version_number} восстановлена на основе версии № {previous_version.version_number}."
+            saved = True
+        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        db.commit()
+        return {"content": answer, "contract_saved": saved, "reasoning": "", "next_action": "agreement"}
+
+    if (
+        latest_version_before_answer is not None
+        and contract_message_intent == "agreement"
+        and "хотите включить" not in last_assistant_lower
+        and "выберите: краткая, расширенная или пришлите свою редакцию" not in last_assistant_lower
+    ):
         latest_version = get_latest_version(db, session)
         version_number = latest_version.version_number if latest_version else 1
         answer = (
@@ -2956,7 +3011,7 @@ async def send_message(
     ):
         selected_norm = None
         reasoning = ""
-        if is_short_option(payload.content):
+        if is_short_option(payload.content) or is_affirmative_message(payload.content):
             selected_norm = extract_norm_option(last_assistant_before_answer, "short")
         elif is_expanded_option(payload.content):
             selected_norm = extract_norm_option(last_assistant_before_answer, "expanded")
@@ -2983,6 +3038,7 @@ async def send_message(
                 latest_version_before_answer.content,
                 requested_change,
                 payload.model,
+                llm_conversation(prior_messages),
             )
         except YandexGPTError:
             answer = (
@@ -3029,6 +3085,7 @@ async def send_message(
                 latest_version_before_answer.content,
                 last_assistant_before_answer,
                 recent_dialogue,
+                llm_conversation(prior_messages),
             )
         except YandexGPTError:
             answer = (
@@ -3147,6 +3204,7 @@ async def send_message(
                 requested_change = strip_addition_command(payload.content)
                 prompt = [
                     {"role": "system", "text": CONTRACT_SYSTEM_PROMPT},
+                    *llm_conversation(prior_messages),
                     {
                         "role": "user",
                         "text": (
@@ -3199,6 +3257,7 @@ async def send_message(
                             "Максимум 8-10 предложений."
                         ),
                     },
+                    *llm_conversation(prior_messages),
                     {
                         "role": "user",
                         "text": (
@@ -3219,6 +3278,7 @@ async def send_message(
             else:
                 prompt = [
                     {"role": "system", "text": SIMPLE_CONTRACT_SYSTEM_PROMPT},
+                    *llm_conversation(prior_messages),
                     {
                         "role": "user",
                         "text": (

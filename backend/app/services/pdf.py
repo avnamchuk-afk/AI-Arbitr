@@ -12,6 +12,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Flowable, Paragraph, SimpleDocTemplate, Spacer
 
+from app.catalogs.contracts import identify_contract_type
 from app.models.entities import ContractSession, ContractVersion, Message, ContractParticipant
 
 
@@ -279,9 +280,10 @@ def build_interaction_certificate_pdf(
     )
 
     content_hash = session.final_content_hash or hash_text(final_version.content)
+    catalog_roles = identify_contract_type(final_version.content, content=True).roles
     party_roles = {
-        "party_1": session.party_1_legal_role or "Наймодатель",
-        "party_2": session.party_2_legal_role or "Наниматель",
+        "party_1": session.party_1_legal_role or catalog_roles[0],
+        "party_2": session.party_2_legal_role or catalog_roles[1],
     }
     party_names = {
         key: extract_party_name(final_version.content, legal_role)

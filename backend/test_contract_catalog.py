@@ -19,6 +19,8 @@ class ContractCatalogTests(unittest.TestCase):
             "Договор поставки оборудования": "supply",
             "Подготовь условия поставок товара": "supply",
             "Договор займа между физлицами": "loan",
+            "Учредительный договор для ООО": "llc_founders",
+            "Подготовь договор страхования": "insurance",
         }
         for request, expected in cases.items():
             with self.subTest(request=request):
@@ -47,6 +49,16 @@ class ContractCatalogTests(unittest.TestCase):
 
         serialized = contract_catalog()
         self.assertEqual(len(serialized["types"]), len(CONTRACT_TYPES))
+
+    def test_contextual_roles_for_llc_and_insurance(self):
+        self.assertEqual(
+            identify_contract_type("Учредительный договор ООО").roles,
+            ("Сооснователь 1", "Сооснователь 2"),
+        )
+        self.assertEqual(
+            identify_contract_type("Договор страхования").roles,
+            ("Страхователь", "Страховщик"),
+        )
 
 
 if __name__ == "__main__":

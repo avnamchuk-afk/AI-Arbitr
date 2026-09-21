@@ -378,6 +378,8 @@ function getLegalRoleOptions(session, detail) {
   if (context.includes("аренд")) return ["Арендодатель", "Арендатор"];
   if (context.includes("купл") || context.includes("продавец") || context.includes("покупател")) return ["Продавец", "Покупатель"];
   if (context.includes("подряд") || context.includes("подрядчик")) return ["Заказчик", "Подрядчик"];
+  if (context.includes("учрежден") || context.includes("соосновател") || context.includes("уставный капитал")) return ["Сооснователь 1", "Сооснователь 2"];
+  if (context.includes("страхов")) return ["Страхователь", "Страховщик"];
   if (context.includes("займ")) return ["Займодавец", "Заемщик"];
   return ["Заказчик", "Исполнитель"];
 }

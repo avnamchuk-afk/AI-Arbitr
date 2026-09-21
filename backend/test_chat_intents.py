@@ -31,6 +31,16 @@ class ChatIntentTests(unittest.TestCase):
             "question",
         )
 
+    def test_recognizes_show_current_contract(self):
+        for message in ("Покажи договор", "полный текст", "Покажи текущую версию"):
+            with self.subTest(message=message):
+                self.assertEqual(detect_contract_message_intent(message), "show_contract")
+
+    def test_recognizes_rollback(self):
+        for message in ("Верни предыдущую версию", "откати изменение"):
+            with self.subTest(message=message):
+                self.assertEqual(detect_contract_message_intent(message), "rollback")
+
     def test_strips_natural_addition_command(self):
         self.assertEqual(
             strip_addition_command("Добавь положение о запрете курения"),
