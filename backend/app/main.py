@@ -53,7 +53,7 @@ from app.services.auth import (
     token_expires_at,
 )
 from app.services.contract_templates import AI_ARBITR_DISPUTE_SECTION
-from app.services.email import send_contract_invite, send_contract_signed_notice, send_dispute_notice, send_magic_link, send_signature_progress_notice, smtp_is_configured
+from app.services.email import send_contract_invite, send_contract_signed_notice, send_dispute_notice, send_magic_link, send_signature_progress_notice, send_support_feedback, smtp_is_configured
 from app.services.pdf import build_contract_pdf, build_interaction_certificate_pdf
 from app.services.privacy import contains_passport_like_data
 from app.services.prompts import CONTRACT_SYSTEM_PROMPT, SIMPLE_CONTRACT_SYSTEM_PROMPT, build_dispute_prompt
@@ -199,6 +199,13 @@ class ReviewApproveRequest(BaseModel):
     service_rules_accepted: bool = False
     cookies_accepted: bool = False
     consent_version: str = "1.0"
+
+
+class FeedbackRequest(BaseModel):
+    email: EmailStr
+    description: str
+    expected: str = ""
+    diagnostics: str = ""
 
 
 GUEST_EMAIL_SUFFIX = "@guest.ai-arbitr.local"
@@ -1678,6 +1685,25 @@ def require_unified_consent(personal_data: bool, service_rules: bool, cookies: b
         )
     if version not in ACCEPTED_CONSENT_VERSIONS:
         raise HTTPException(status_code=409, detail="Правила сервиса обновлены. Обновите страницу и примите новую редакцию")
+
+
+@app.post("/feedback")
+def submit_feedback(payload: FeedbackRequest, user: User = Depends(get_current_user)):
+    description = payload.description.strip()
+    if not description:
+        raise HTTPException(status_code=400, detail="Опишите, что произошло")
+    if len(description) > 4000 or len(payload.expected) > 4000 or len(payload.diagnostics) > 8000:
+        raise HTTPException(status_code=400, detail="Сообщение слишком длинное")
+    if not smtp_is_configured():
+        raise HTTPException(status_code=503, detail="Отправка временно недоступна")
+
+    send_support_feedback(
+        str(payload.email),
+        description,
+        payload.expected.strip(),
+        payload.diagnostics.strip(),
+    )
+    return {"sent": True}
 
 
 @app.post("/auth/consent")

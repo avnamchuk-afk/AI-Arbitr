@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import LandingPage from "./LandingPage.jsx";
 import KnowledgeBase from "./KnowledgeBase.jsx";
-import { buildFeedbackMailto } from "./catalogs/feedback.js";
+import { buildFeedbackDiagnostics } from "./catalogs/feedback.js";
 import { FORM_HINTS, getChatSuggestions, getSessionSearchSuggestions } from "./catalogs/suggestions.js";
 import { APP_VERSION, APP_VERSION_SHORT } from "./version.js";
 import "./styles.css";
@@ -659,6 +659,10 @@ function App() {
   const [isGuest, setIsGuest] = useState(false);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackForm, setFeedbackForm] = useState({ email: "", description: "", expected: "" });
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
   const [aboutOpen, setAboutOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [stats, setStats] = useState(null);
@@ -1617,8 +1621,7 @@ function App() {
   const sessionSearchSuggestions = sessionSearchFocused
     ? getSessionSearchSuggestions(sessions, sessionSearch)
     : [];
-  const feedbackMailto = buildFeedbackMailto({
-    supportEmail: SUPPORT_EMAIL,
+  const feedbackDiagnostics = buildFeedbackDiagnostics({
     appVersion: APP_VERSION,
     model: selectedModel,
     sessionId: currentSession?.id,
@@ -1627,6 +1630,35 @@ function App() {
     userAgent: navigator.userAgent,
     viewport: `${window.innerWidth}x${window.innerHeight}`,
   });
+
+  function openFeedback() {
+    setFeedbackForm((current) => ({ ...current, email: current.email || email || "" }));
+    setFeedbackError("");
+    setFeedbackOpen(true);
+  }
+
+  async function submitFeedback(event) {
+    event.preventDefault();
+    setFeedbackError("");
+    setFeedbackSubmitting(true);
+    try {
+      const response = await fetch(`${API_URL}/feedback`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...feedbackForm, diagnostics: feedbackDiagnostics }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(apiErrorMessage(data.detail, "Не удалось отправить сообщение"));
+      setFeedbackOpen(false);
+      setFeedbackForm((current) => ({ email: current.email, description: "", expected: "" }));
+      setToast("Сообщение отправлено. Ответ придет на указанную почту.");
+    } catch (error) {
+      setFeedbackError(error.message || "Не удалось отправить сообщение");
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  }
   const normalizedSessionSearch = sessionSearch.trim().toLowerCase();
   const matchesSessionSearch = (session) => {
     if (!normalizedSessionSearch) return true;
@@ -1939,6 +1971,52 @@ function App() {
           </form>
         </div>
       )}
+      {feedbackOpen && (
+        <div
+          className="auth-modal-backdrop"
+          onClick={() => setFeedbackOpen(false)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <form className="help-modal feedback-modal" onSubmit={submitFeedback} onClick={(event) => event.stopPropagation()}>
+            <h1>Сообщить о проблеме</h1>
+            <p>Опишите проблему. Технические сведения о версии и устройстве добавятся автоматически.</p>
+            <label>
+              Ваша почта
+              <input
+                type="email"
+                value={feedbackForm.email}
+                onChange={(event) => setFeedbackForm((current) => ({ ...current, email: event.target.value }))}
+                placeholder="name@example.com"
+                autoComplete="email"
+                required
+              />
+            </label>
+            <label>
+              Что произошло
+              <textarea
+                value={feedbackForm.description}
+                onChange={(event) => setFeedbackForm((current) => ({ ...current, description: event.target.value }))}
+                rows={4}
+                required
+              />
+            </label>
+            <label>
+              Что ожидалось
+              <textarea
+                value={feedbackForm.expected}
+                onChange={(event) => setFeedbackForm((current) => ({ ...current, expected: event.target.value }))}
+                rows={3}
+              />
+            </label>
+            {feedbackError && <p className="notice">{feedbackError}</p>}
+            <button type="submit" disabled={feedbackSubmitting}>
+              {feedbackSubmitting ? "Отправляю..." : "Отправить"}
+            </button>
+            <button className="modal-secondary" type="button" onClick={() => setFeedbackOpen(false)}>Отмена</button>
+          </form>
+        </div>
+      )}
       {helpOpen && (
         <div className="auth-modal-backdrop" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           <section className="help-modal">
@@ -2093,7 +2171,7 @@ function App() {
                 </div>
                 <div>
                   <dt>Обратная связь</dt>
-                  <dd><a href={feedbackMailto}>{SUPPORT_EMAIL}</a></dd>
+                  <dd><button type="button" className="inline-link" onClick={openFeedback}>{SUPPORT_EMAIL}</button></dd>
                 </div>
               </dl>
             </section>
@@ -2322,7 +2400,7 @@ function App() {
         </div>
         <div className="sidebar-footer">
           <button onClick={() => setHelpOpen(true)}>Помощь / FAQ</button>
-          <a href={feedbackMailto}>Сообщить о проблеме</a>
+          <button type="button" onClick={openFeedback}>Сообщить о проблеме</button>
         </div>
       </aside>
       <section className="chat-area">

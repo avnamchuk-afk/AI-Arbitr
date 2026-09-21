@@ -8,8 +8,7 @@ function safePagePath(pathname = "/") {
   return pathname || "/";
 }
 
-export function buildFeedbackMailto({
-  supportEmail,
+export function buildFeedbackDiagnostics({
   appVersion,
   model,
   sessionId,
@@ -19,17 +18,7 @@ export function buildFeedbackMailto({
   viewport,
   timestamp = new Date().toISOString(),
 }) {
-  const subject = `Ошибка AI-Arbitr ${appVersion}${stage ? ` · ${stage}` : ""}`;
-  const body = [
-    "Что произошло:",
-    "",
-    "",
-    "Что ожидалось:",
-    "",
-    "",
-    "Приложите скриншот к письму, если это возможно.",
-    "",
-    "Диагностика:",
+  return [
     `Версия: ${appVersion}`,
     `Модель: ${MODEL_LABELS[model] || model || "не выбрана"}`,
     `Этап: ${stage || "не определен"}`,
@@ -38,10 +27,7 @@ export function buildFeedbackMailto({
     `Размер окна: ${viewport || "не определен"}`,
     `Устройство: ${userAgent || "не определено"}`,
     `Время: ${timestamp}`,
-    "",
-    "Текст договора и персональные данные в диагностику не включены.",
   ].join("\n");
-  return `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 export { safePagePath };

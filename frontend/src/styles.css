@@ -786,6 +786,37 @@ button:hover {
   padding-left: 18px;
 }
 
+.feedback-modal label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.feedback-modal input,
+.feedback-modal textarea {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 11px 12px;
+  color: var(--ink);
+  background: rgb(255 255 255 / 72%);
+  font: inherit;
+  font-weight: 400;
+  resize: vertical;
+}
+
+.inline-link {
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  background: transparent;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .faq-list {
   display: grid;
   gap: 8px;

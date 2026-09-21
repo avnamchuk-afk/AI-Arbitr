@@ -38,6 +38,25 @@ def send_magic_link(email: str, link: str) -> None:
     _send_message(message)
 
 
+def send_support_feedback(reply_to: str, description: str, expected: str, diagnostics: str) -> None:
+    if not smtp_is_configured():
+        return
+
+    message = EmailMessage()
+    message["Subject"] = "Сообщение о проблеме AI-Arbitr"
+    message["From"] = settings.smtp_from
+    message["To"] = "ai-arbitr@ya.ru"
+    message["Reply-To"] = reply_to
+    message.set_content(
+        f"Почта пользователя: {reply_to}\n\n"
+        f"Что произошло:\n{description}\n\n"
+        f"Что ожидалось:\n{expected or 'Не указано'}\n\n"
+        f"Диагностика:\n{diagnostics}\n\n"
+        "Текст договора и персональные данные в диагностику не включены.\n"
+    )
+    _send_message(message)
+
+
 def send_contract_invite(
     email: str,
     link: str,
