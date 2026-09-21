@@ -301,7 +301,7 @@ export const knowledgeArticles = [
         ],
       },
     ],
-    sources: [["Федеральный закон № 152-ФЗ и другие официальные акты", "https://pravo.gov.ru/"]],
+    sources: [["Федеральный закон № 152-ФЗ «О персональных данных»", "https://ips.pravo.gov.ru/search/98490812b3409e2a8d78a11ca9010f434ea3d9250a11dbbdb78690cd5551bdd6"]],
     related: ["final-documents", "electronic-signature", "free-access"],
   },
   {
