@@ -1,7 +1,11 @@
 from dataclasses import dataclass
 from typing import Callable
 
-from app.services.contract_templates import build_housing_rent_contract, build_website_development_contract
+from app.services.contract_templates import (
+    build_ai_store_assistant_contract,
+    build_housing_rent_contract,
+    build_website_development_contract,
+)
 
 
 TemplateBuilder = Callable[[str], str]
@@ -63,6 +67,10 @@ def _website_builder(_: str) -> str:
     return build_website_development_contract()
 
 
+def _ai_store_builder(_: str) -> str:
+    return build_ai_store_assistant_contract()
+
+
 CONTRACT_TYPES: tuple[ContractType, ...] = (
     ContractType(
         id="housing_rent",
@@ -77,6 +85,19 @@ CONTRACT_TYPES: tuple[ContractType, ...] = (
         card_fields=HOUSING_CARD_FIELDS,
         request_marker_groups=(("аренд", "жиль"), ("аренд", "квартир"), ("снять", "квартир"), ("сда", "квартир")),
         template_builder=_housing_builder,
+    ),
+    ContractType(
+        id="ai_store_assistant",
+        category="digital_development",
+        legal_title="Договор подряда на разработку программного обеспечения",
+        short_title="Договор AI-помощника",
+        request_markers=("ai-помощник", "ai помощник", "ии-помощник", "ии помощник"),
+        content_markers=("ai-помощника для интернет-магазина", "поиск ответов по переданному заказчиком каталогу"),
+        roles=("Заказчик", "Подрядчик"),
+        template_id="ai-store-assistant-ru",
+        template_version="1.0",
+        card_fields=STANDARD_CARD_FIELDS,
+        template_builder=_ai_store_builder,
     ),
     ContractType(
         id="website_development",

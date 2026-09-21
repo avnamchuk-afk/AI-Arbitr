@@ -347,6 +347,7 @@ function getSessionStatusLabel(session) {
 
 function getSessionIcon(session) {
   const title = (session.title || "").toLowerCase();
+  if (title.includes("ai-помощник") || title.includes("ии-помощник")) return Sparkles;
   if (title.includes("подряд") || title.includes("строит") || title.includes("ремонт")) return HardHat;
   if (title.includes("найм") || title.includes("аренд")) return Home;
   if (title.includes("saas") || title.includes("сайт") || title.includes("лендинг")) return Globe2;
@@ -1700,7 +1701,7 @@ function App() {
             ? "Опишите, что осталось неисполненным"
             : "Напишите ответ по существу спора"
           : messages.length === 0 && !hasContractVersion
-            ? "Например: составь договор найма квартиры"
+            ? "Например: составь договор на разработку AI-помощника для интернет-магазина"
             : "Напишите сообщение";
   const composerHint = hasContractVersion
     ? "Можно задать вопрос, добавить условие или написать email второй стороны для согласования"

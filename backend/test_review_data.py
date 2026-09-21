@@ -9,9 +9,42 @@ from app.main import (
     build_rule_based_addition_review,
     require_unified_consent,
 )
+from app.catalogs.contracts import build_contract_from_catalog
 
 
 class ReviewPartyDataTest(unittest.TestCase):
+    def test_ai_store_example_replaces_both_signers(self):
+        _, contract = build_contract_from_catalog(
+            "Составь договор на разработку AI-помощника для интернет-магазина",
+            "https://ai-arbitr.example",
+        )
+        party_2 = ReviewApproveRequest(
+            party_type="individual",
+            full_name="Новый Подрядчик",
+            passport="1234 567890",
+            phone="+7 999 123-45-67",
+            email="contractor@example.org",
+            personal_data_accepted=True,
+        )
+        party_1 = ReviewApproveRequest(
+            party_type="individual",
+            full_name="Новый Заказчик",
+            passport="4321 098765",
+            phone="+7 999 765-43-21",
+            email="customer@example.org",
+            personal_data_accepted=True,
+        )
+
+        result = apply_ephemeral_party_data(contract, party_2, participant_role="party_2")
+        result = apply_ephemeral_party_data(result, party_1, participant_role="party_1")
+
+        self.assertIn("Гражданин РФ Новый Заказчик, паспорт серии 4321 № 098765", result)
+        self.assertIn("Гражданин РФ Новый Подрядчик, паспорт серии 1234 № 567890", result)
+        self.assertIn("ЗАКАЗЧИК:\nФ.И.О.: Новый Заказчик", result)
+        self.assertIn("ПОДРЯДЧИК:\nФ.И.О.: Новый Подрядчик", result)
+        self.assertNotIn("Петров Иван Сергеевич", result)
+        self.assertNotIn("Сидоров Алексей Петрович", result)
+
     def test_hookah_request_stays_on_topic(self):
         answer = build_rule_based_addition_review("Включи в договор пункт о разрешении курить кальян")
 

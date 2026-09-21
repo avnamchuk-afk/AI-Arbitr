@@ -14,6 +14,7 @@ class ContractCatalogTests(unittest.TestCase):
             "Составь договор найма квартиры": "housing_rent",
             "Нужен договор на разработку сайта": "website_development",
             "Подготовь договор на разработку SaaS продукта": "saas_development",
+            "Составь договор на разработку сервиса AI-помощника для интернет-магазина": "ai_store_assistant",
             "Договор строительного подряда": "construction_work",
             "Договор оказания клининговых услуг": "services",
             "Договор поставки оборудования": "supply",
@@ -32,6 +33,20 @@ class ContractCatalogTests(unittest.TestCase):
         self.assertTrue(contract_type.has_fixed_template)
         self.assertIn("ДОГОВОР НАЙМА ЖИЛОГО ПОМЕЩЕНИЯ", content)
         self.assertIn("https://ai-arbitr.example", content)
+
+    def test_ai_store_request_uses_fixed_template(self):
+        contract_type, content = build_contract_from_catalog(
+            "Составь договор на разработку сервиса AI-помощника для интернет-магазина",
+            "https://ai-arbitr.example",
+        )
+        self.assertEqual(contract_type.id, "ai_store_assistant")
+        self.assertTrue(contract_type.has_fixed_template)
+        self.assertEqual(contract_type.roles, ("Заказчик", "Подрядчик"))
+        self.assertIn("ДОГОВОР ПОДРЯДА НА РАЗРАБОТКУ ПРОГРАММНОГО ОБЕСПЕЧЕНИЯ", content)
+        self.assertIn("сторонние библиотеки", content)
+        self.assertIn("критерии приемки", content)
+        self.assertNotIn("[ФИО]", content)
+        self.assertEqual(identify_contract_type(content, content=True).id, "ai_store_assistant")
 
     def test_universal_type_has_no_fixed_template(self):
         contract_type, content = build_contract_from_catalog("необычная смешанная сделка", "https://example.test")
