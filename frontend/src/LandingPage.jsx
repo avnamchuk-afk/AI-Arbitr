@@ -156,9 +156,9 @@ function LandingHeader() {
   );
 }
 
-function Section({ eyebrow, title, children, className = "" }) {
+function Section({ eyebrow, title, children, className = "", id }) {
   return (
-    <section className={`landing-section ${className}`}>
+    <section className={`landing-section ${className}`} id={id}>
       {eyebrow && <span className="landing-eyebrow">{eyebrow}</span>}
       <h2>{title}</h2>
       {children}
@@ -390,7 +390,15 @@ export default function LandingPage() {
         </div>
       </Section>
 
-      <Section eyebrow="Roadmap" title="AI-Arbitr сегодня и завтра">
+      <Section eyebrow="Открытость" title="Наша политика открытости">
+        <div className="landing-openness">
+          <p><strong>Источники финансирования</strong><span>Сейчас проект развивается на средства основателей.</span></p>
+          <p><strong>Планы развития</strong><span>Показываем, что уже работает и что пока остаётся планом.</span></p>
+        </div>
+        <a className="landing-openness-link" href="#roadmap">Смотреть дорожную карту <ArrowRight size={17} /></a>
+      </Section>
+
+      <Section eyebrow="Roadmap" title="AI-Arbitr сегодня и завтра" className="landing-roadmap-section" id="roadmap">
         <div className="roadmap-block completed">
           <div className="roadmap-heading"><span>Готово</span><h3>Уже реализовано</h3></div>
           <div className="landing-roadmap">

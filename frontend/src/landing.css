@@ -498,6 +498,33 @@
   grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
 }
 
+.landing-openness {
+  display: grid;
+  gap: 12px;
+}
+
+.landing-openness p {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.32fr) minmax(0, 1fr);
+  gap: 16px;
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid rgb(37 69 122 / 14%);
+  line-height: 1.5;
+}
+
+.landing-openness-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  color: #25457a;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.landing-roadmap-section { scroll-margin-top: 80px; }
+
 .roadmap-block {
   display: grid;
   gap: 12px;
@@ -660,6 +687,7 @@
 }
 
 @media (max-width: 420px) {
+  .landing-openness p { grid-template-columns: 1fr; gap: 4px; }
   .landing-header {
     grid-template-columns: 1fr auto;
   }
