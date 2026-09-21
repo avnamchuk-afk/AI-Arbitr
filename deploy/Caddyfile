@@ -1,0 +1,23 @@
+ai-arbitr.online {
+	encode gzip zstd
+
+	handle_path /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle /auth/* {
+		reverse_proxy backend:8000
+	}
+
+	handle /download/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
+}
+
+www.ai-arbitr.online {
+	redir https://ai-arbitr.online{uri} permanent
+}
