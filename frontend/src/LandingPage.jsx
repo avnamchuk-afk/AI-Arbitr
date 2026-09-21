@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import {
   ArrowRight,
   BarChart3,
+  BriefcaseBusiness,
   Check,
   Clock3,
   Database,
