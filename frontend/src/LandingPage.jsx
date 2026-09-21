@@ -159,7 +159,7 @@ function LandingHeader() {
         <a href="#faq">FAQ</a>
         <a href="/knowledge">База знаний</a>
       </nav>
-      <a className="landing-header-cta" href={appHref}>Начать</a>
+      <a className="landing-header-cta" href={appHref}>Начать работу</a>
     </header>
   );
 }
@@ -202,7 +202,7 @@ export default function LandingPage() {
             в досудебном порядке в соответствии с договором.
           </p>
           <div className="landing-cta-row">
-            <a className="landing-primary" href={appHref}>Бесплатно навсегда <ArrowRight size={18} /></a>
+            <a className="landing-primary" href={appHref}>Начать работу <ArrowRight size={18} /></a>
             <a className="landing-secondary" href="#how">Как это работает</a>
           </div>
           <small>Бесплатно для физических лиц, ИП и МСП | Без ввода карты | Попробуйте без регистрации</small>
@@ -434,7 +434,7 @@ export default function LandingPage() {
       <section className="landing-final">
         <h2>Готовы заключить договор за 5 минут?</h2>
         <p>Без юристов. Без судов. Без бюрократии. Бесплатно навсегда для физлиц, самозанятых, ИП и МСП.</p>
-        <a className="landing-primary" href={appHref}>Бесплатно навсегда <ArrowRight size={18} /></a>
+        <a className="landing-primary" href={appHref}>Начать работу <ArrowRight size={18} /></a>
         <small>iPhone или Android | С VPN или без | Без ввода карты | Попробуйте без регистрации</small>
       </section>
     </main>

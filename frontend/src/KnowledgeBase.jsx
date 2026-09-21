@@ -5,6 +5,7 @@ import { APP_VERSION_SHORT } from "./version.js";
 import "./knowledge.css";
 
 const articleHref = (slug) => `/knowledge/${slug}`;
+const appHref = `/?start=landing&v=${APP_VERSION_SHORT}`;
 
 function setPageMetadata(title, description) {
   document.title = title;
@@ -27,7 +28,7 @@ function KnowledgeHeader() {
         <a href="/landing">О сервисе</a>
         <a href="/knowledge">База знаний</a>
       </nav>
-      <a className="knowledge-start" href="/">Открыть сервис</a>
+      <a className="knowledge-start" href={appHref}>Начать работу</a>
     </header>
   );
 }
@@ -95,7 +96,7 @@ function KnowledgeArticle({ article }) {
           <div className="knowledge-disclaimer">
             Материал носит информационный характер и описывает текущую MVP-версию сервиса.
           </div>
-          <a className="knowledge-primary" href="/">Попробовать в AI-Arbitr <ArrowRight size={18} /></a>
+          <a className="knowledge-primary" href={appHref}>Начать работу <ArrowRight size={18} /></a>
           <RelatedArticles slugs={article.related || []} />
         </article>
       </div>
