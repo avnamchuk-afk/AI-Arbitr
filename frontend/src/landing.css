@@ -98,6 +98,7 @@
 }
 
 .landing-hero-copy {
+  min-width: 0;
   display: grid;
   gap: 16px;
 }
@@ -655,6 +656,21 @@
 @media (max-width: 420px) {
   .landing-header {
     grid-template-columns: 1fr auto;
+  }
+
+  .landing-header > * {
+    min-width: 0;
+  }
+
+  .landing-hero h1 {
+    max-width: 100%;
+    font-size: 29px;
+    line-height: 1.06;
+    overflow-wrap: break-word;
+  }
+
+  .landing-cta-row > a {
+    width: 100%;
   }
 
   .landing-brand i {
