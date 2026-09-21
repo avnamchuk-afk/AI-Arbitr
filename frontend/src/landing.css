@@ -446,6 +446,12 @@
   gap: 8px;
 }
 
+.landing-audience-heading {
+  margin: 24px 0 8px;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
 .landing-audience p,
 .landing-checks p {
   display: grid;

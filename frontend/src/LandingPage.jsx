@@ -36,14 +36,6 @@ const metrics = [
   ["iOS / Android", "работает в браузере, с VPN или без"],
 ];
 
-const audiences = [
-  "Физлица: найм жилья, аренда, услуги.",
-  "Самозанятые и фрилансеры: подряд, разработка, услуги.",
-  "ИП и МСП: договоры с клиентами и поставщиками.",
-  "Инвесторы: снижение транзакционных издержек сделки.",
-  "Крупный бизнес: корпоративные тарифы и аналитика.",
-];
-
 const trustItems = [
   "RAG-подход: ответы опираются на проверенные источники, а не на догадки.",
   "Шаблоны и процессы верифицированы юридической методологией.",
@@ -338,8 +330,20 @@ export default function LandingPage() {
       </Section>
 
       <Section eyebrow="Аудитории" title="Для кого создан AI-Arbitr?">
+        <p className="landing-lead">
+          Для тех, кто открыт к инновациям, устал от бумажных договоров и долгих судов.
+          Кто хочет заключать договоры просто, а споры разрешать справедливо.
+        </p>
+        <h3 className="landing-audience-heading">Базовый сценарий бесплатен для</h3>
         <div className="landing-audience">
-          {audiences.map((item) => <p key={item}><Check size={16} />{item}</p>)}
+          <p><Check size={16} /><span><strong>Физлиц:</strong> найм жилья, аренда, личные договоры.</span></p>
+          <p><Check size={16} /><span><strong>Самозанятых и фрилансеров:</strong> подряд, разработка, услуги.</span></p>
+          <p><Check size={16} /><span><strong>ИП и МСП:</strong> договоры с клиентами и поставщиками.</span></p>
+        </div>
+        <h3 className="landing-audience-heading">Другие сценарии</h3>
+        <div className="landing-audience">
+          <p><Check size={16} /><span><strong>Инвесторам:</strong> снижение транзакционных издержек сделки.</span></p>
+          <p><Check size={16} /><span><strong>Крупному бизнесу:</strong> корпоративные тарифы и аналитика.</span></p>
         </div>
       </Section>
 
