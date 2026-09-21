@@ -195,7 +195,7 @@ export default function LandingPage() {
       <section className="landing-hero">
         <div className="landing-hero-copy">
           <span className="landing-eyebrow">Первые в России</span>
-          <h1>Без юристов. Без судов. Без формализма и бюрократии.</h1>
+          <h1>Без юристов. Без судов. Без формализма и&nbsp;бюрократии</h1>
           <p>
             AI-Arbitr помогает составить договор, согласовать его со второй стороной,
             подписать простой электронной подписью, а если возникнет спор — разрешить его за одну минуту
