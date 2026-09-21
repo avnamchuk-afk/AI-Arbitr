@@ -148,7 +148,7 @@ function LandingSchema() {
 function LandingHeader() {
   return (
     <header className="landing-header">
-      <a className="landing-brand" href="#top" aria-label="AI-Arbitr">
+      <a className="landing-brand" href="/landing" aria-label="Открыть лендинг AI-Arbitr">
         <span>A</span>
         <strong>AI-Arbitr</strong>
         <i>β {APP_VERSION_SHORT}</i>

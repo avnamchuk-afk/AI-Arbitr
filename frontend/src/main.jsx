@@ -479,7 +479,7 @@ function ModelSelector({ selectedModel, onChange }) {
   );
 }
 
-function LogoMark({ compact = false, onClick }) {
+function LogoMark({ compact = false }) {
   const content = (
     <>
       <span className="brand-icon" aria-hidden="true">
@@ -489,22 +489,14 @@ function LogoMark({ compact = false, onClick }) {
       <span className="brand-beta">β {APP_VERSION_SHORT}</span>
     </>
   );
-  if (onClick) {
-    return (
-      <button
-        className={compact ? "brand-mark compact interactive" : "brand-mark interactive"}
-        type="button"
-        onClick={onClick}
-        aria-label="О сервисе AI-Arbitr"
-      >
-        {content}
-      </button>
-    );
-  }
   return (
-    <div className={compact ? "brand-mark compact" : "brand-mark"} aria-label={`AI-Arbitr beta ${APP_VERSION_SHORT}`}>
+    <a
+      className={compact ? "brand-mark compact interactive" : "brand-mark interactive"}
+      href="/landing"
+      aria-label={`Открыть лендинг AI-Arbitr beta ${APP_VERSION_SHORT}`}
+    >
       {content}
-    </div>
+    </a>
   );
 }
 
@@ -2348,7 +2340,7 @@ function App() {
         )}
         {!currentSession ? (
           <div className="empty-state">
-            <LogoMark onClick={() => setAboutOpen(true)} />
+            <LogoMark />
             <strong className="hero-offer">Бесплатно в смартфоне</strong>
             <div className="hero-flow" aria-label="Клиентский путь AI-Arbitr">
               <span>Составить</span>
