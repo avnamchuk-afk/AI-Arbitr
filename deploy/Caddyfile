@@ -1,4 +1,4 @@
-ai-arbitr.online {
+ai-arbitr.online, www.ai-arbitr.online {
 	encode gzip zstd
 
 	handle_path /api/* {
@@ -16,8 +16,4 @@ ai-arbitr.online {
 	handle {
 		reverse_proxy frontend:80
 	}
-}
-
-www.ai-arbitr.online {
-	redir https://ai-arbitr.online{uri} permanent
 }
