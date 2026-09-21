@@ -1,4 +1,5 @@
 ai-arbitr.online, www.ai-arbitr.online {
+	log
 	encode gzip zstd
 
 	handle_path /api/* {
