@@ -15,6 +15,8 @@ class ChatIntentTests(unittest.TestCase):
             "включи условие о рассрочке депозита",
             "Хочу добавить право посещать квартиру",
             "Измени пункт об оплате",
+            "Давай добавим порядок приемки работ",
+            "Внеси в договор условие о гарантии",
         )
         for message in additions:
             with self.subTest(message=message):
@@ -32,9 +34,18 @@ class ChatIntentTests(unittest.TestCase):
         )
 
     def test_recognizes_show_current_contract(self):
-        for message in ("Покажи договор", "полный текст", "Покажи текущую версию"):
+        for message in (
+            "Покажи договор",
+            "полный текст",
+            "Покажи текущую версию",
+            "покажи текущую вери=сию договора",
+            "Открой актуальную редакцию договора",
+        ):
             with self.subTest(message=message):
                 self.assertEqual(detect_contract_message_intent(message), "show_contract")
+
+    def test_show_contract_command_is_never_treated_as_off_topic(self):
+        self.assertFalse(is_clearly_unrelated_to_contract("покажи текущую вери=сию договора"))
 
     def test_recognizes_rollback(self):
         for message in ("Верни предыдущую версию", "откати изменение"):

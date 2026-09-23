@@ -4,9 +4,14 @@ import re
 CONTRACT_UPDATE_PREFIX = "ДОПОЛНИТЬ ДОГОВОР:"
 
 ADDITION_PATTERNS = (
-    r"^(?:пожалуйста,?\s*)?(?:добавь|добавить|включи|включить|дополни|дополнить|предусмотри|предусмотреть)\b",
+    r"^(?:пожалуйста,?\s*)?(?:давай\s+)?(?:добавь|добавим|добавить|внеси|внести|включи|включим|включить|дополни|дополнить|предусмотри|предусмотреть)\b",
     r"^(?:измени|изменить|перепиши|переписать|скорректируй|скорректировать)\s+(?:пункт|условие|положение)\b",
-    r"^(?:нужно|хочу|надо)\s+(?:добавить|включить|предусмотреть)\b",
+    r"^(?:нужно|хочу|надо)\s+(?:добавить|внести|включить|предусмотреть|изменить)\b",
+)
+
+SHOW_CONTRACT_PATTERNS = (
+    r"\b(?:покаж\w*|откро\w*|вывед\w*|пришл\w*)\b.*\b(?:договор\w*|текст\w*|вер\w*|редакц\w*)\b",
+    r"\b(?:полн\w*\s+текст\w*|текущ\w*\s+(?:вер\w*|редакц\w*))\b",
 )
 
 AGREEMENT_PHRASES = {
@@ -80,8 +85,10 @@ PROMPT_ABUSE_PATTERNS = (
 
 
 def detect_contract_message_intent(text: str) -> str:
-    normalized = " ".join(text.lower().replace("ё", "е").split())
+    normalized = normalize_intent_text(text)
     if normalized.rstrip(".!?") in SHOW_CONTRACT_PHRASES:
+        return "show_contract"
+    if any(re.search(pattern, normalized) for pattern in SHOW_CONTRACT_PATTERNS):
         return "show_contract"
     if normalized.rstrip(".!?") in ROLLBACK_PHRASES:
         return "rollback"
@@ -95,7 +102,7 @@ def detect_contract_message_intent(text: str) -> str:
 def strip_addition_command(text: str) -> str:
     cleaned = text.removeprefix(CONTRACT_UPDATE_PREFIX).strip()
     cleaned = re.sub(
-        r"^(?:пожалуйста,?\s*)?(?:добавь|добавить|включи|включить|дополни|дополнить|предусмотри|предусмотреть)\s+",
+        r"^(?:пожалуйста,?\s*)?(?:давай\s+)?(?:добавь|добавим|добавить|внеси|внести|включи|включим|включить|дополни|дополнить|предусмотри|предусмотреть)\s+",
         "",
         cleaned,
         flags=re.IGNORECASE,
@@ -104,7 +111,9 @@ def strip_addition_command(text: str) -> str:
 
 
 def is_clearly_unrelated_to_contract(text: str) -> bool:
-    normalized = " ".join(text.lower().replace("ё", "е").split()).strip(" .!?")
+    if detect_contract_message_intent(text) != "question":
+        return False
+    normalized = normalize_intent_text(text).strip(" .!?")
     if normalized in OFF_TOPIC_EXACT_PHRASES:
         return True
     if any(re.search(pattern, normalized, re.IGNORECASE) for pattern in PROMPT_ABUSE_PATTERNS):
@@ -119,3 +128,10 @@ def is_clearly_unrelated_to_contract(text: str) -> bool:
 def is_contract_creation_request(text: str) -> bool:
     normalized = " ".join(text.lower().replace("ё", "е").split())
     return bool(re.search(CONTRACT_CREATION_PATTERN, normalized, re.IGNORECASE))
+
+
+def normalize_intent_text(text: str) -> str:
+    normalized = text.lower().replace("ё", "е")
+    # Mobile keyboards often insert a separator inside a word: "вери=сию".
+    normalized = re.sub(r"(?<=[а-яa-z])[^а-яa-z0-9\s]+(?=[а-яa-z])", "", normalized)
+    return " ".join(normalized.split())

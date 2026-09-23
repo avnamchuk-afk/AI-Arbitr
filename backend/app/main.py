@@ -2802,8 +2802,10 @@ async def send_message(
     )
     if (
         session.status != SessionStatus.finalized
-        and contract_message_intent != "agreement"
-        and (off_topic_after_contract or invalid_initial_request)
+        and (
+            (off_topic_after_contract and contract_message_intent == "question")
+            or (invalid_initial_request and contract_message_intent != "agreement")
+        )
     ):
         answer = (
             "Не понял, как это относится к договору. Я отвечаю только на вопросы по текущему договору, "
@@ -3069,6 +3071,14 @@ async def send_message(
             selected_norm = payload.content.strip()
 
         updated_contract = add_norm_to_contract(latest_version_before_answer.content, selected_norm)
+        if updated_contract == latest_version_before_answer.content:
+            answer = (
+                "Это условие уже есть в текущей версии договора либо редакция не содержит нового условия. "
+                "Уточните, что именно нужно изменить."
+            )
+            db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+            db.commit()
+            return {"content": answer, "contract_saved": False, "reasoning": "", "next_action": "clarify_addition"}
         save_contract_version(db, session, updated_contract)
         answer = build_custom_norm_review(selected_norm) if reasoning else build_norm_saved_answer(selected_norm)
         if reasoning:
@@ -3282,6 +3292,8 @@ async def send_message(
                             "Если последний вопрос является уточнением, восстанови контекст из истории. "
                             "Запрещено возвращать полный текст договора, "
                             "разделы договора, преамбулу, реквизиты или новую редакцию. "
+                            "Обычный ответ на вопрос не изменяет договор: не говори «внесено», «добавлено» "
+                            "или «изменено», пока пользователь отдельно не выбрал редакцию условия. "
                             "Сначала дай прямой ответ, затем кратко объясни почему. "
                             "Ответ строй только по одной из трех схем:\n"
                             "1) Если вопрос прямо урегулирован договором: «Это договором предусмотрено» и короткая цитата пункта.\n"
