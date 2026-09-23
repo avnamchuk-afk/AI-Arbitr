@@ -94,7 +94,9 @@ function KnowledgeArticle({ article }) {
             </section>
           )}
           <div className="knowledge-disclaimer">
-            Материал носит информационный характер и описывает текущую MVP-версию сервиса.
+            Материал описывает MVP. Наиболее полно проработаны найм жилья и разработка AI/SaaS-сервиса;
+            остальные виды договоров пока создаются по универсальному сценарию.
+            <a href="/landing#contract-types"> Выбрать следующий типовой договор</a>.
           </div>
           <a className="knowledge-primary" href={appHref}>Начать работу <ArrowRight size={18} /></a>
           <RelatedArticles slugs={article.related || []} />

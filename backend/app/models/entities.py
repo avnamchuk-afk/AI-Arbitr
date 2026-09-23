@@ -72,6 +72,16 @@ class RateLimitEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
 
 
+class ContractTypeVote(Base):
+    __tablename__ = "contract_type_votes"
+
+    voter_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    choice: Mapped[str] = mapped_column(String(32), index=True)
+    other_text: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
 class AnalyticsEvent(Base):
     __tablename__ = "analytics_events"
 

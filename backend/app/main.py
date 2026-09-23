@@ -10,7 +10,7 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import or_, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_cors_origins, settings
@@ -20,6 +20,7 @@ from app.catalogs.contracts import (
     describe_contract_type,
     identify_contract_type,
 )
+from app.catalogs.contract_poll import CONTRACT_TYPE_POLL_IDS, CONTRACT_TYPE_POLL_OPTIONS
 from app.catalogs.chat_intents import (
     detect_contract_message_intent,
     is_contract_creation_request,
@@ -35,6 +36,7 @@ from app.models.entities import (
     ContractAnalyticsSnapshot,
     ContractParticipant,
     ContractSession,
+    ContractTypeVote,
     ContractVersion,
     Message,
     MessageRole,
@@ -1512,6 +1514,50 @@ def get_workflow_catalog():
 @app.get("/contracts/catalog")
 def get_contract_catalog():
     return contract_catalog()
+
+
+class ContractTypeVoteRequest(BaseModel):
+    voter_id: uuid.UUID
+    choice: str
+    other_text: str = ""
+
+
+@app.get("/contract-type-poll")
+def get_contract_type_poll(db: Session = Depends(get_db)):
+    counts = {option_id: 0 for option_id, _ in CONTRACT_TYPE_POLL_OPTIONS}
+    for choice, count in db.query(ContractTypeVote.choice, func.count()).group_by(ContractTypeVote.choice).all():
+        if choice in counts:
+            counts[choice] = count
+    return {
+        "options": [{"id": option_id, "label": label, "votes": counts[option_id]} for option_id, label in CONTRACT_TYPE_POLL_OPTIONS],
+        "total": sum(counts.values()),
+    }
+
+
+@app.post("/contract-type-poll")
+def vote_contract_type(
+    payload: ContractTypeVoteRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if payload.choice not in CONTRACT_TYPE_POLL_IDS:
+        raise HTTPException(status_code=400, detail="Выберите вариант из списка")
+    other_text = " ".join(payload.other_text.split())
+    if payload.choice == "other" and not other_text:
+        raise HTTPException(status_code=400, detail="Укажите тип договора")
+    if len(other_text) > 120:
+        raise HTTPException(status_code=400, detail="Название договора слишком длинное")
+
+    voter_hash = hashlib.sha256(f"{settings.app_secret_key}:{payload.voter_id}".encode()).hexdigest()
+    vote = db.get(ContractTypeVote, voter_hash)
+    if vote is None:
+        check_daily_rate_limit(db, request, "contract_type_poll")
+        vote = ContractTypeVote(voter_hash=voter_hash)
+        db.add(vote)
+    vote.choice = payload.choice
+    vote.other_text = other_text if payload.choice == "other" else None
+    db.commit()
+    return get_contract_type_poll(db)
 
 
 @app.get("/stats")
