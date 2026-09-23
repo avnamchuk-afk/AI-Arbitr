@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   BriefcaseBusiness,
@@ -458,27 +459,134 @@ const PROJECT_TEAM = [
   },
 ];
 
+const AI_MODELS = [
+  { id: "yandexgpt", label: "YandexGPT 5.1 Pro", available: true },
+  { id: "qwen", label: "Qwen 2.5 7B Instruct", available: true },
+  { id: "gigachat", label: "GigaChat", available: false },
+  { id: "chatgpt", label: "ChatGPT", available: false },
+  { id: "claude", label: "Claude", available: false },
+  { id: "deepseek", label: "DeepSeek", available: false },
+];
+
 function ModelSelector({ selectedModel, onChange }) {
+  const [menuState, setMenuState] = useState("closed");
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0, width: 280, opensUp: false });
+  const triggerRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const selected = AI_MODELS.find((model) => model.id === selectedModel) || AI_MODELS[1];
+  const isVisible = menuState !== "closed";
+
+  const closeMenu = () => {
+    if (!isVisible || menuState === "closing") return;
+    setMenuState("closing");
+    closeTimerRef.current = window.setTimeout(() => setMenuState("closed"), 180);
+  };
+
+  const positionMenu = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const viewportPadding = 10;
+    const menuHeight = 304;
+    const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const availableAbove = rect.top - viewportPadding;
+    const opensUp = availableBelow < menuHeight && availableAbove > availableBelow;
+    const width = Math.min(Math.max(rect.width, 280), window.innerWidth - viewportPadding * 2);
+    const left = Math.min(Math.max(rect.left, viewportPadding), window.innerWidth - width - viewportPadding);
+    const top = opensUp
+      ? Math.max(viewportPadding, rect.top - menuHeight - 8)
+      : Math.min(window.innerHeight - menuHeight - viewportPadding, rect.bottom + 8);
+    setMenuPosition({ left, top: Math.max(viewportPadding, top), width, opensUp });
+  };
+
+  const openMenu = () => {
+    window.clearTimeout(closeTimerRef.current);
+    positionMenu();
+    setMenuState("open");
+  };
+
+  useEffect(() => () => window.clearTimeout(closeTimerRef.current), []);
+
+  useEffect(() => {
+    if (!isVisible) return undefined;
+    const reposition = () => positionMenu();
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    window.addEventListener("resize", reposition);
+    window.addEventListener("orientationchange", reposition);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("orientationchange", reposition);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isVisible, menuState]);
+
   return (
-    <label className="model-selector" aria-label="Выбор нейросети">
-      <span className="model-status" aria-hidden="true" />
-      <span className="model-copy">
-        <select
-          value={selectedModel}
-          onChange={(event) => {
-            onChange?.(event.target.value);
-          }}
-        >
-          <option value="yandexgpt">YandexGPT 5.1 Pro</option>
-          <option value="qwen">Qwen 2.5 7B Instruct</option>
-          <option value="gigachat" disabled>GigaChat скоро</option>
-          <option value="chatgpt" disabled>ChatGPT скоро</option>
-          <option value="claude" disabled>Claude скоро</option>
-          <option value="deepseek" disabled>DeepSeek скоро</option>
-        </select>
-        <small>Foundation Models API</small>
-      </span>
-    </label>
+    <div className="model-selector">
+      <button
+        ref={triggerRef}
+        className="model-trigger"
+        type="button"
+        aria-label={`Выбрать AI-модель. Сейчас выбрана ${selected.label}`}
+        aria-haspopup="listbox"
+        aria-expanded={isVisible}
+        onClick={() => (isVisible ? closeMenu() : openMenu())}
+      >
+        <span className="model-status" aria-hidden="true" />
+        <span className="model-copy">
+          <strong>{selected.label}</strong>
+          <small>Foundation Models API</small>
+        </span>
+        <ChevronDown className={isVisible ? "model-chevron open" : "model-chevron"} size={16} aria-hidden="true" />
+      </button>
+      {isVisible && createPortal(
+        <>
+          <button
+            className={`model-backdrop ${menuState}`}
+            type="button"
+            aria-label="Закрыть список моделей"
+            onClick={closeMenu}
+            onTouchStart={(event) => event.stopPropagation()}
+            onTouchEnd={(event) => event.stopPropagation()}
+          />
+          <div
+            className={`model-menu ${menuState} ${menuPosition.opensUp ? "opens-up" : ""}`}
+            role="listbox"
+            aria-label="Доступные AI-модели"
+            style={{ left: menuPosition.left, top: menuPosition.top, width: menuPosition.width }}
+            onTouchStart={(event) => event.stopPropagation()}
+            onTouchEnd={(event) => event.stopPropagation()}
+          >
+            {AI_MODELS.map((model) => {
+              const active = model.id === selected.id;
+              return (
+                <button
+                  key={model.id}
+                  className={`model-option ${active ? "active" : ""}`}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  disabled={!model.available}
+                  onClick={() => {
+                    if (!model.available) return;
+                    if (!active) onChange?.(model.id);
+                    closeMenu();
+                  }}
+                >
+                  <span className="model-option-marker" aria-hidden="true">{active ? "●" : ""}</span>
+                  <span>{model.label}</span>
+                  {!model.available && <small>скоро</small>}
+                  {active && <Check className="model-option-check" size={16} aria-hidden="true" />}
+                </button>
+              );
+            })}
+          </div>
+        </>,
+        document.body,
+      )}
+    </div>
   );
 }
 
