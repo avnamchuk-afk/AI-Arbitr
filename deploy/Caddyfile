@@ -1,3 +1,9 @@
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
 ai-arbitr.online, www.ai-arbitr.online {
 	log
 	encode gzip zstd
