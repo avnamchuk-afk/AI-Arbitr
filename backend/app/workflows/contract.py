@@ -20,6 +20,7 @@ class ContractAction(str, Enum):
     CREATE_VERSION = "create_version"
     SEND_INVITE = "send_invite"
     SIGN_COUNTERPARTY = "sign_counterparty"
+    REQUEST_CHANGES = "request_changes"
     SIGN_CREATOR = "sign_creator"
     OPEN_DISPUTE = "open_dispute"
     RESPOND_TO_DISPUTE = "respond_to_dispute"
@@ -58,6 +59,7 @@ ACTION_LABELS = {
     ContractAction.CREATE_VERSION: "Сохранить версию",
     ContractAction.SEND_INVITE: "Направить на согласование",
     ContractAction.SIGN_COUNTERPARTY: "Подписать",
+    ContractAction.REQUEST_CHANGES: "Предложить изменения",
     ContractAction.SIGN_CREATOR: "Подписать со своей стороны",
     ContractAction.OPEN_DISPUTE: "Открыть спор",
     ContractAction.RESPOND_TO_DISPUTE: "Ответить по спору",
@@ -87,7 +89,7 @@ STAGE_ACTIONS = {
     },
     ContractStage.AWAITING_COUNTERPARTY: {
         "party_1": (ContractAction.ASK_QUESTION, ContractAction.SEND_INVITE),
-        "party_2": (ContractAction.SIGN_COUNTERPARTY,),
+        "party_2": (ContractAction.SIGN_COUNTERPARTY, ContractAction.REQUEST_CHANGES),
     },
     ContractStage.AWAITING_CREATOR: {
         "party_1": (ContractAction.SIGN_CREATOR,),

@@ -831,6 +831,10 @@ function App() {
   const [reviewFormOpen, setReviewFormOpen] = useState(false);
   const [reviewConfirmation, setReviewConfirmation] = useState(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewChangesOpen, setReviewChangesOpen] = useState(false);
+  const [reviewChanges, setReviewChanges] = useState("");
+  const [reviewChangesSubmitting, setReviewChangesSubmitting] = useState(false);
+  const [reviewSessionId, setReviewSessionId] = useState("");
   const [ownerSigningOpen, setOwnerSigningOpen] = useState(false);
   const [ownerSubmitting, setOwnerSubmitting] = useState(false);
   const [ownerForm, setOwnerForm] = useState({
@@ -1122,7 +1126,7 @@ function App() {
     setReviewLoading(true);
     setReviewNotice("");
     try {
-      const response = await fetch(`${API_URL}/review/${token}`);
+      const response = await fetch(`${API_URL}/review/${token}`, { credentials: "include" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         setReviewNotice(apiErrorMessage(data.detail, "Ссылка согласования не найдена"));
@@ -1155,6 +1159,7 @@ function App() {
     try {
       const response = await fetch(`${API_URL}/review/${reviewToken}/approve`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           party_type: reviewForm.partyType,
@@ -1185,10 +1190,39 @@ function App() {
         finalized: Boolean(data.finalized),
         approved: true,
       }));
+      setReviewSessionId(data.session_id || "");
     } catch {
       setReviewNotice("Не удалось подписать договор. Проверьте подключение и попробуйте еще раз.");
     } finally {
       setReviewSubmitting(false);
+    }
+  }
+
+  async function requestReviewChanges(event) {
+    event.preventDefault();
+    if (!reviewToken || reviewChangesSubmitting || !reviewChanges.trim()) return;
+    setReviewChangesSubmitting(true);
+    setReviewNotice("");
+    try {
+      const response = await fetch(`${API_URL}/review/${reviewToken}/request-changes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: reviewChanges.trim() }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setReviewNotice(apiErrorMessage(data.detail, "Не удалось отправить предложение"));
+        return;
+      }
+      const deliveryNote = data.email_delivery?.status === "failed"
+        ? " Первая сторона увидит его в договоре; письмо отправить не удалось."
+        : " Первая сторона получит уведомление.";
+      setReviewConfirmation({ title: "Изменения предложены", message: `${data.message}.${deliveryNote}` });
+      setReviewData(null);
+    } catch {
+      setReviewNotice("Не удалось отправить предложение. Проверьте подключение и попробуйте еще раз.");
+    } finally {
+      setReviewChangesSubmitting(false);
     }
   }
 
@@ -1352,9 +1386,10 @@ function App() {
     }
   }
 
-  async function sendMessage() {
-    if (!draft.trim() || !currentSession) return;
-    const rawContent = draft.trim();
+  async function sendMessage(messageOverride = "") {
+    const override = typeof messageOverride === "string" ? messageOverride : "";
+    const rawContent = (override || draft).trim();
+    if (!rawContent || !currentSession) return;
     const normalizedInput = rawContent.toLowerCase().replace(/ё/g, "е").trim();
     const isContractUpdate = chatMode === "add" || (
       hasContractVersion
@@ -1640,6 +1675,12 @@ function App() {
     window.open(`${API_URL}/sessions/${currentSession.id}/certificate.pdf`, "_blank", "noopener,noreferrer");
   }
 
+  function downloadContract() {
+    if (!currentSession) return;
+    setToast("Открываю финальный договор");
+    window.open(`${API_URL}/sessions/${currentSession.id}/contract.pdf`, "_blank", "noopener,noreferrer");
+  }
+
   async function signAsFirstParty(event) {
     event.preventDefault();
     if (!currentSession || ownerSubmitting) return;
@@ -1874,21 +1915,47 @@ function App() {
               {reviewData.approved || reviewData.finalized ? (
                 <div className="review-approved">
                   <Check size={18} /> Подпись уже зафиксирована.
+                  {reviewSessionId && (
+                    <button type="button" onClick={() => { window.location.href = `/?session=${reviewSessionId}`; }}>
+                      Перейти к договору
+                    </button>
+                  )}
                 </div>
               ) : !reviewFormOpen ? (
-                <button
-                  className="review-agree-button"
-                  type="button"
-                  onClick={() => {
-                    setReviewFormOpen(true);
-                    setReviewConfirmation({
-                      title: "Проверка реквизитов",
-                      message: "Проверьте реквизиты и при необходимости исправьте примерные данные. Все верно?",
-                    });
-                  }}
-                >
-                  <Check size={17} /> Подписать
-                </button>
+                <div className="review-choice">
+                  <button
+                    className="review-agree-button"
+                    type="button"
+                    onClick={() => {
+                      setReviewChangesOpen(false);
+                      setReviewFormOpen(true);
+                      setReviewConfirmation({
+                        title: "Проверка реквизитов",
+                        message: "Проверьте реквизиты и при необходимости исправьте примерные данные. Все верно?",
+                      });
+                    }}
+                  >
+                    <Check size={17} /> Подписать
+                  </button>
+                  <button className="review-change-button" type="button" onClick={() => setReviewChangesOpen(true)}>
+                    Предложить изменения
+                  </button>
+                  {reviewChangesOpen && (
+                    <form className="review-change-form" onSubmit={requestReviewChanges}>
+                      <textarea
+                        value={reviewChanges}
+                        onChange={(event) => setReviewChanges(event.target.value)}
+                        placeholder="Кратко опишите, что нужно изменить"
+                        maxLength={4000}
+                        autoFocus
+                        required
+                      />
+                      <button disabled={reviewChangesSubmitting}>
+                        {reviewChangesSubmitting ? "Отправляю..." : "Отправить первой стороне"}
+                      </button>
+                    </form>
+                  )}
+                </div>
               ) : (
                 <form className="review-form" onSubmit={approveReview} ref={reviewFormRef}>
                   <h2>Ваши данные · {reviewData.legal_role || "сторона договора"}</h2>
@@ -2715,8 +2782,20 @@ function App() {
                           Согласиться с решением
                         </button>
                       )}
+                      {disputeState?.opened && disputeState?.responded && !disputeState?.decision_issued && disputeState?.is_initiator && (
+                        <button
+                          className="dispute-button"
+                          onClick={() => sendMessage("Сформируй решение с учетом ответа второй стороны")}
+                          disabled={thinking}
+                        >
+                          Сформировать решение
+                        </button>
+                      )}
                       <button className="download-button" onClick={downloadCertificate}>
                         <Download size={16} /> Скачать справку
+                      </button>
+                      <button className="download-button" onClick={downloadContract}>
+                        <Download size={16} /> Скачать договор
                       </button>
                       {!currentSession?.is_completed && !disputeState?.opened && (
                         <button className="download-button" onClick={markCompleted} disabled={completionConfirmed}>

@@ -1704,7 +1704,11 @@ def get_current_user(
     user_id = read_session_cookie(session_cookie)
     if user_id is None:
         raise HTTPException(status_code=401, detail="Требуется вход")
-    user = db.get(User, user_id)
+    try:
+        user_key = uuid.UUID(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Требуется вход")
+    user = db.get(User, user_key)
     if user is None:
         raise HTTPException(status_code=401, detail="Требуется вход")
     return user
@@ -1717,7 +1721,10 @@ def get_optional_current_user(
     user_id = read_session_cookie(session_cookie)
     if user_id is None:
         return None
-    return db.get(User, user_id)
+    try:
+        return db.get(User, uuid.UUID(user_id))
+    except (TypeError, ValueError):
+        return None
 
 
 def is_guest_user(user: User) -> bool:
@@ -2073,9 +2080,7 @@ def get_session(session_id: str, user: User = Depends(get_current_user), db: Ses
 
 @app.delete("/sessions/{session_id}")
 def delete_session(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    session = db.get(ContractSession, session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Сессия не найдена")
+    session = get_accessible_session(db, session_id, user)
     if session.owner_user_id != user.id:
         raise HTTPException(status_code=403, detail="Удалить договор может только его создатель")
     require_workflow_action(db, session, "party_1", ContractAction.DELETE_CONTRACT)
@@ -2086,7 +2091,11 @@ def delete_session(session_id: str, user: User = Depends(get_current_user), db: 
 
 
 def get_accessible_session(db: Session, session_id: str, user: User) -> ContractSession:
-    session = db.get(ContractSession, session_id)
+    try:
+        session_key = uuid.UUID(session_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="Сессия не найдена")
+    session = db.get(ContractSession, session_key)
     if session is None:
         raise HTTPException(status_code=404, detail="Сессия не найдена")
 
@@ -2125,7 +2134,7 @@ def build_workflow_context(db: Session, session: ContractSession) -> WorkflowCon
     party_1 = next((item for item in participants if item.role == ParticipantRole.party_1), None)
     party_2 = next((item for item in participants if item.role == ParticipantRole.party_2), None)
     has_version = db.query(ContractVersion.id).filter(ContractVersion.session_id == session.id).first() is not None
-    invite_sent = (
+    invite_sent = session.invite_token is not None and (
         db.query(Message.id)
         .filter(Message.session_id == session.id, Message.content.like("VERSION_SENT|%"))
         .first()
@@ -2235,6 +2244,19 @@ def email_all_contract_parties(session: ContractSession, subject: str, body: str
             )
         except Exception:
             continue
+
+
+def deliver_email(send_function, *args, **kwargs) -> dict:
+    if not smtp_is_configured():
+        return {"status": "not_configured", "message": "Почтовая отправка не настроена"}
+    try:
+        send_function(*args, **kwargs)
+        return {"status": "sent", "message": "Письмо отправлено"}
+    except Exception:
+        return {
+            "status": "failed",
+            "message": "Действие сохранено, но письмо не отправлено. Используйте ссылку вручную.",
+        }
 
 
 def get_final_version(db: Session, session: ContractSession) -> ContractVersion | None:
@@ -2468,9 +2490,7 @@ def create_invite(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    session = db.get(ContractSession, session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Сессия не найдена")
+    session = get_accessible_session(db, session_id, user)
     if session.owner_user_id != user.id:
         raise HTTPException(status_code=403, detail="Приглашение может создать только Сторона 1")
     if is_guest_user(user):
@@ -2516,8 +2536,6 @@ def create_invite(
             .one()
         )
         party_2.user_id = invited_user.id
-        send_contract_invite(payload.email, invite_link, session.title, pdf_link, copy_to=user.email)
-        sent = smtp_is_configured()
         db.add(
             Message(
                 session_id=session.id,
@@ -2534,17 +2552,33 @@ def create_invite(
         )
         upsert_contract_analytics_snapshot(db, session)
         db.commit()
+        email_delivery = deliver_email(
+            send_contract_invite,
+            str(payload.email),
+            invite_link,
+            session.title,
+            pdf_link,
+            copy_to=user.email,
+        )
+        sent = email_delivery["status"] == "sent"
+    else:
+        email_delivery = {"status": "not_requested", "message": "Email не указан"}
     return {
         "invite_link": invite_link,
         "sent": sent,
         "sent_to": str(payload.email) if payload and payload.email else None,
         "copy_to": user.email if sent else None,
+        "email_delivery": email_delivery,
         "workflow": workflow_for(db, session, "party_1"),
     }
 
 
 def get_session_by_review_token(db: Session, invite_token: str) -> ContractSession:
-    session = db.query(ContractSession).filter(ContractSession.invite_token == invite_token).one_or_none()
+    try:
+        token_key = uuid.UUID(invite_token)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="Ссылка согласования не найдена")
+    session = db.query(ContractSession).filter(ContractSession.invite_token == token_key).one_or_none()
     if session is None:
         raise HTTPException(status_code=404, detail="Ссылка согласования не найдена")
     invite_deadline = session.invite_expires_at or (session.updated_at + timedelta(days=7))
@@ -2607,7 +2641,12 @@ def get_review_contract(invite_token: str, db: Session = Depends(get_db)):
 
 
 @app.post("/review/{invite_token}/approve")
-def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db: Session = Depends(get_db)):
+def approve_review_contract(
+    invite_token: str,
+    payload: ReviewApproveRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     require_unified_consent(
         payload.personal_data_accepted,
         payload.service_rules_accepted,
@@ -2685,8 +2724,8 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
         session.party_2_legal_role,
     )
     session.pending_signing_content = temp_content
-    if owner and not is_guest_user(owner):
-        send_signature_progress_notice(owner.email, session.title, f"{settings.app_base_url}/?session={session.id}")
+    session.invite_token = None
+    session.invite_expires_at = None
     record_analytics_event(
         db,
         "party_2_approved",
@@ -2700,11 +2739,73 @@ def approve_review_contract(invite_token: str, payload: ReviewApproveRequest, db
     )
     upsert_contract_analytics_snapshot(db, session)
     db.commit()
+    set_auth_cookie(response, user)
+    email_delivery = (
+        deliver_email(
+            send_signature_progress_notice,
+            owner.email,
+            session.title,
+            f"{settings.app_base_url}/?session={session.id}",
+        )
+        if owner and not is_guest_user(owner)
+        else {"status": "not_requested", "message": "Уведомление владельцу не требуется"}
+    )
     return {
         "finalized": False,
         "party_two_signed": True,
         "owner_email": owner.email if owner else None,
+        "authenticated": True,
+        "session_id": str(session.id),
+        "email_delivery": email_delivery,
         "workflow": workflow_for(db, session, "party_2"),
+    }
+
+
+@app.post("/review/{invite_token}/request-changes")
+def request_review_changes(invite_token: str, payload: ChangesRequest, db: Session = Depends(get_db)):
+    requested_change = payload.content.strip()
+    if not requested_change:
+        raise HTTPException(status_code=400, detail="Опишите предлагаемое изменение")
+    if len(requested_change) > 4000:
+        raise HTTPException(status_code=400, detail="Описание изменения не должно превышать 4000 знаков")
+
+    session = get_session_by_review_token(db, invite_token)
+    require_workflow_action(db, session, "party_2", ContractAction.REQUEST_CHANGES)
+    latest_version = get_latest_version(db, session)
+    if latest_version is None:
+        raise HTTPException(status_code=400, detail="Нет версии договора для согласования")
+    owner = db.get(User, session.owner_user_id)
+    party_2 = next(item for item in session.participants if item.role == ParticipantRole.party_2)
+    for participant in session.participants:
+        participant.approval_status = ApprovalStatus.pending
+        participant.approved_version_id = None
+        participant.signed_at = None
+    party_2.approval_status = ApprovalStatus.changes_requested
+    session.pending_signing_content = None
+    session.final_content_hash = None
+    session.invite_token = None
+    session.invite_expires_at = None
+    db.add(Message(session_id=session.id, role=MessageRole.user, content=f"Сторона 2 предлагает изменения: {requested_change}"))
+    db.add(Message(session_id=session.id, role=MessageRole.system, content=f"CHANGES_REQUESTED|{latest_version.version_number}|party_2|{now_utc().isoformat()}"))
+    record_analytics_event(db, "changes_requested", session=session, user=party_2.user, properties={"version_number": latest_version.version_number})
+    upsert_contract_analytics_snapshot(db, session)
+    db.commit()
+    email_delivery = (
+        deliver_email(
+            send_dispute_notice,
+            owner.email,
+            session.title,
+            "Вторая сторона предложила изменения",
+            requested_change,
+            f"{settings.app_base_url}/?session={session.id}",
+        )
+        if owner and not is_guest_user(owner)
+        else {"status": "not_requested", "message": "Уведомление владельцу не требуется"}
+    )
+    return {
+        "message": "Предложение сохранено и направлено первой стороне",
+        "session_id": str(session.id),
+        "email_delivery": email_delivery,
     }
 
 
@@ -3003,7 +3104,6 @@ async def send_message(
         party_2.user_id = invited_user.id
         invite_link = f"{settings.app_base_url}/review/{session.invite_token}"
         pdf_link = f"{settings.api_base_url}/review/{session.invite_token}.pdf"
-        send_contract_invite(party_email, invite_link, session.title, pdf_link, copy_to=user.email)
         db.add(
             Message(
                 session_id=session.id,
@@ -3021,9 +3121,30 @@ async def send_message(
         upsert_contract_analytics_snapshot(db, session)
         answer = (
             f"Версия № {latest_version.version_number} направлена на согласование на адрес {party_email}. "
-            f"Копия письма отправлена на {user.email}."
+            "Сохраняю результат отправки."
         )
-        db.add(Message(session_id=session.id, role=MessageRole.assistant, content=answer))
+        delivery_message = Message(session_id=session.id, role=MessageRole.assistant, content=answer)
+        db.add(delivery_message)
+        db.commit()
+        email_delivery = deliver_email(
+            send_contract_invite,
+            party_email,
+            invite_link,
+            session.title,
+            pdf_link,
+            copy_to=user.email,
+        )
+        if email_delivery["status"] == "sent":
+            answer = (
+                f"Версия № {latest_version.version_number} направлена на согласование на адрес {party_email}. "
+                f"Копия письма отправлена на {user.email}."
+            )
+        else:
+            answer = (
+                f"Версия № {latest_version.version_number} сохранена для согласования, но письмо отправить не удалось. "
+                "Скопируйте ссылку и передайте её второй стороне вручную."
+            )
+        delivery_message.content = answer
         db.commit()
         return {
             "content": answer,
@@ -3033,6 +3154,7 @@ async def send_message(
             "invite_link": invite_link,
             "sent_to": party_email,
             "copy_to": user.email,
+            "email_delivery": email_delivery,
         }
 
     if (
@@ -3582,6 +3704,7 @@ def approve_version(
         upsert_contract_analytics_snapshot(db, session)
 
     db.commit()
+    email_deliveries = []
     if both_approved:
         messages = (
             db.query(Message)
@@ -3596,17 +3719,24 @@ def approve_version(
         pdf_bytes = build_contract_pdf(session, pdf_version, participants, messages)
         certificate_bytes = build_interaction_certificate_pdf(session, latest_version, participants, messages)
         calendar_link = build_contract_calendar_link(session, latest_version)
-        try:
-            for item in participants:
-                if item.user and not is_guest_user(item.user):
-                    send_contract_signed_notice(item.user.email, session.title, pdf_bytes, certificate_bytes, calendar_link)
-        finally:
-            session.pending_signing_content = None
-            db.commit()
+        for item in participants:
+            if item.user and not is_guest_user(item.user):
+                delivery = deliver_email(
+                    send_contract_signed_notice,
+                    item.user.email,
+                    session.title,
+                    pdf_bytes,
+                    certificate_bytes,
+                    calendar_link,
+                )
+                email_deliveries.append({"email": item.user.email, **delivery})
+        session.pending_signing_content = None
+        db.commit()
     return {
         "finalized": both_approved,
         "status": session.status,
         "workflow": workflow_for(db, session, "party_1"),
+        "email_deliveries": email_deliveries,
     }
 
 
@@ -3719,6 +3849,33 @@ def download_interaction_certificate(
     )
     pdf_bytes = build_interaction_certificate_pdf(session, final_version, session.participants, messages)
     filename = f"ai-arbitr-certificate-{session.id}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/sessions/{session_id}/contract.pdf")
+def download_authenticated_contract(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = get_accessible_session(db, session_id, user)
+    if session.status != SessionStatus.finalized:
+        raise HTTPException(status_code=400, detail="Финальный PDF доступен только после подписания договора")
+    final_version = get_final_version(db, session)
+    if final_version is None:
+        raise HTTPException(status_code=404, detail="Финальная версия договора не найдена")
+    messages = (
+        db.query(Message)
+        .filter(Message.session_id == session.id)
+        .order_by(Message.created_at.asc())
+        .all()
+    )
+    pdf_bytes = build_contract_pdf(session, final_version, session.participants, messages)
+    filename = f"ai-arbitr-{session.id}.pdf"
     return StreamingResponse(
         BytesIO(pdf_bytes),
         media_type="application/pdf",

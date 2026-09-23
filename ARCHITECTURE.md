@@ -111,7 +111,7 @@ Backend отвечает за:
 - финализацию и PDF;
 - аналитику.
 
-Frontend местами использует backend `workflow`, но не полностью управляется им. Например, часть видимости кнопок вычисляется из `status`, participant approvals и локального `chatMode`. Endpoint `/request-changes` и generic `/versions` frontend не вызывает.
+Frontend местами использует backend `workflow`, но не полностью управляется им. Например, часть видимости кнопок вычисляется из `status`, participant approvals и локального `chatMode`. Публичный review-flow вызывает отдельный `/review/{token}/request-changes`; generic authenticated `/sessions/{id}/request-changes` и `/versions` frontend не вызывает.
 
 ## 5. Pages и маршруты
 
@@ -239,7 +239,7 @@ Coarse state хранится в `sessions.status`, но точный этап �
 - очищает pending signing content/hash;
 - пишет `VERSION_CREATED` и analytics.
 
-Invite token живёт 7 дней. Признак «invite sent» workflow восстанавливает по наличию `VERSION_SENT|` в system messages, а не только по token.
+Invite token живёт до 7 дней и становится недействительным после подписи B или запроса правок. Workflow считает приглашение активным только при наличии token и `VERSION_SENT|`; повторная отправка создаёт новый token.
 
 После подписи B полный текст с её реквизитами хранится в `pending_signing_content`. После подписи A в него добавляются реквизиты A, этот текст записывается в текущую `ContractVersion.content`, версия становится final, session — finalized, вычисляется hash и создаётся download token. Затем `pending_signing_content` очищается.
 
@@ -378,6 +378,8 @@ Rule-based special cases покрывают, среди прочего, повы
 | `GET /review/{token}` | направленная версия, terms, email/role B |
 | `GET /review/{token}.pdf` | inline review PDF |
 | `POST /review/{token}/approve` | реквизиты и подпись B |
+| `POST /review/{token}/request-changes` | сохранить предложение B, сбросить подписи и уведомить A |
+| `GET /sessions/{id}/contract.pdf` | финальный PDF для authenticated participant |
 | `GET /download/{token}.pdf` | всегда `410`; постоянное хранение final PDF отключено |
 
 ## 13. Файлы и PDF
@@ -389,7 +391,7 @@ PDF создаётся ReportLab в `BytesIO`:
 - review PDF строится on demand;
 - final contract и certificate строятся после подписи A и прикрепляются к email;
 - certificate можно повторно сгенерировать через auth endpoint;
-- final PDF повторно скачать по permanent link нельзя (`410`).
+- final PDF повторно генерируется и скачивается authenticated участником через session endpoint; legacy permanent link возвращает `410`.
 
 Лицензионный OTF ожидается вне Git в host path `../ai-arbitr-assets/fonts`, монтируется read-only в frontend. PDF ищет доступный font path и имеет DejaVu fallback.
 
@@ -406,7 +408,7 @@ PDF создаётся ReportLab в `BytesIO`:
 - dispute notices;
 - feedback на support mailbox.
 
-`sent` у invite означает наличие SMTP configuration, а не подтверждённую доставку. Bounce handling отсутствует. Ошибка SMTP может прервать request.
+Invite/finalization сначала фиксируют бизнес-операцию, затем выполняют SMTP как побочный эффект. API возвращает `email_delivery`/`email_deliveries` со статусом `sent`, `failed` или `not_configured`; при сбое остаётся ручная review-ссылка. Bounce handling и retry queue отсутствуют.
 
 ## 15. Переменные окружения и внешние сервисы
 
@@ -442,7 +444,7 @@ Frontend hashed assets cache immutable; HTML/config имеют no-cache. CI/CD p
 
 ## 17. Тесты
 
-Backend использует стандартный `unittest`: сейчас 41 тест в восьми файлах.
+Backend использует стандартный `unittest`: сейчас 44 теста в девяти файлах.
 
 Покрыты:
 
@@ -457,11 +459,11 @@ Backend использует стандартный `unittest`: сейчас 41 
 
 Не покрыты автоматическими тестами:
 
-- реальные FastAPI endpoint chains с test DB;
+- реальные FastAPI endpoint chains с isolated SQLite test DB, mock LLM и mock SMTP;
 - auth cookies/magic links;
 - invite expiry/access control;
-- обе подписи и PDF/email finalization;
-- dispute E2E;
+- bilateral review/change/reinvite, обе подписи, PDF и email-failure continuity;
+- dispute E2E до принятия решения обеими сторонами;
 - frontend component/browser behavior;
 - deployment/SMTP/LLM integration.
 
@@ -469,8 +471,7 @@ Backend использует стандартный `unittest`: сейчас 41 
 
 ## 18. Незавершённая и временная логика
 
-- `request-changes` не подключён к UI и не создаёт новую AI-версию.
-- Переговоры B и циклическое согласование отсутствуют.
+- Запрос правок B подключён к review UI, но сам не создаёт новую AI-версию: A принимает предложение в основном чате и вручную запускает добавление условия.
 - Файловые доказательства спора нельзя приложить, хотя dispute prompt их предполагает.
 - Автоматические deadlines, reminders, expiry contract и prolongation отсутствуют.
 - `/download/{token}.pdf` содержит недостижимый legacy code после безусловного `410`.
@@ -516,7 +517,7 @@ Backend использует стандартный `unittest`: сейчас 41 
 
 ## Шаг 5. Согласование условий
 
-Реально реализованный MVP: B не редактирует и не ведёт переговоры, а только просматривает и решает подписать. До invite условия меняет A. Endpoint `request-changes` существует, но не участвует в UI/E2E.
+На review-странице B выбирает: подписать текущую версию или предложить изменения. `POST /review/{token}/request-changes` сохраняет предложение в chat history, сбрасывает approvals/signatures, инвалидирует token и уведомляет A. A обрабатывает формулировку через обычный addition-flow, создаёт новую версию и отправляет новый token. Цикл можно повторять.
 
 ## Шаг 6. B подписывает
 
@@ -525,6 +526,7 @@ Backend использует стандартный `unittest`: сейчас 41 
 - Domain: consent/format/email validation, `apply_ephemeral_party_data()`.
 - DB: B `approved/signed_at/approved_version_id`; masked event в `messages`; полный текст временно в `sessions.pending_signing_content`.
 - External: email A о готовности его подписи.
+- Auth: успешная подпись устанавливает обычную signed session cookie B; token инвалидируется, а договор появляется в списке сессий B.
 
 ## Шаг 7. A подписывает и договор финализируется
 
@@ -549,7 +551,7 @@ Backend использует стандартный `unittest`: сейчас 41 
 
 ## Шаг 10. B отвечает или истекает срок
 
-- B должен войти в основной аккаунт отдельно и открыть session из email link.
+- После review-подписи B уже authenticated и открывает session из своего списка договоров.
 - API: тот же messages endpoint, effective prefix `ОТВЕТ`.
 - DB: user response + `DELAY_RESPONSE`.
 - External: email инициатору.
@@ -592,21 +594,21 @@ FastAPI → Google Calendar URL (link only)
 
 # 3. MVP risks
 
-1. **Party B continuity:** review signing does not authenticate B. Later execution/dispute acceptance requires a separate login flow, so the full two-party path can break after signing.
-2. **No real bilateral negotiation:** B cannot reject or edit in the production UI; `request-changes` is orphaned.
+1. **Party B identity assurance:** review signing authenticates B as the pre-created email user by possession of the invite token plus exact email match, but does not separately verify mailbox ownership at signing time.
+2. **Negotiation remains intentionally minimal:** B can propose text changes, but only A can turn them into a new contract version; there is no structured diff or per-clause acceptance.
 3. **Dispute evidence gap:** no file upload despite prompts referring to documents; AI can only evaluate text entered into chat and stored history.
 4. **No background jobs:** three-day deadline, reminders, contract expiry and prolongation do not advance automatically.
 5. **State encoded in free-text markers:** workflow/dispute/analytics parse `messages.content` prefixes; typo or manual format drift can corrupt derived state.
 6. **Monolithic endpoints/components:** `send_message()` and `main.jsx` combine many states and order-sensitive branches, making regressions likely.
 7. **Schema management:** `create_all` + ad hoc ALTERs provide no reversible/ordered migrations or deployment-time schema verification.
-8. **Email delivery:** synchronous SMTP, no queue/retry/bounce status; configured SMTP can be reported as sent without confirmed delivery.
-9. **Final PDF availability:** final contract PDF is only emailed and not durably stored/re-downloadable; loss/non-delivery cannot be repaired through `/download`.
+8. **Email delivery:** synchronous SMTP has no queue/retry/bounce processing. API reports immediate SMTP success/failure, not actual inbox delivery.
+9. **Final PDF regeneration:** PDF is regenerated from current final DB state rather than stored as immutable bytes; integrity relies on final-version immutability and `final_content_hash` rather than object storage.
 10. **Personal data transient state:** full party data is temporarily persisted in `pending_signing_content`, then final full data is persisted in final `ContractVersion.content`; this must be reconciled with privacy claims.
 11. **Version race/integrity:** version number is `count()+1` without unique constraint or locking; concurrent writes can duplicate numbers.
 12. **Approval reference integrity:** `approved_version_id` has no database ForeignKey.
-13. **Token exposure model:** review token grants read access to the full contract and remains reusable until expiry; approval additionally checks email but no authenticated ownership.
+13. **Token exposure model:** review token grants read access to the full contract until expiry or first sign/change action; approval additionally checks the invited email, but possession of the token remains the main access factor.
 14. **AI reliability:** universal contracts and dispute decisions depend on remote models, one 90-second synchronous request and prompt compliance; fallback does not validate legal correctness.
 15. **Fixed vs universal divergence:** fixed templates, legacy demo text and prompts can encode different rules/numbering.
 16. **Workflow enforcement is partial:** not every chat branch calls `require_workflow_action`; frontend also reconstructs some states independently.
-17. **Insufficient automated E2E:** critical auth/invite/sign/PDF/dispute chain is manual and therefore vulnerable to unnoticed integration regressions.
+17. **Frontend E2E gap:** backend lifecycle is covered by integration tests, but browser rendering, navigation and mobile interaction still lack automated Playwright coverage.
 18. **Claims vs implementation:** README/docs contain stale URLs and statements (audit metadata, protected archive, dispute behavior) stronger or older than current code.

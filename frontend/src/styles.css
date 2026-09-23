@@ -387,6 +387,35 @@ button:hover {
   font-weight: 700;
 }
 
+.review-choice,
+.review-change-form {
+  display: grid;
+  gap: 8px;
+}
+
+.review-change-button,
+.review-change-form button,
+.review-approved button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--accent-strong);
+  background: var(--surface-strong);
+  font-weight: 700;
+}
+
+.review-change-form textarea {
+  min-height: 110px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: var(--ink);
+  background: var(--surface-strong);
+  font: inherit;
+}
+
 @media (max-width: 600px) {
   .review-page {
     padding: 10px;
@@ -503,6 +532,7 @@ button:hover {
   color: var(--accent-strong);
   background: rgb(236 240 248 / 72%);
   backdrop-filter: var(--blur);
+  flex-wrap: wrap;
 }
 
 .key-terms-card {
