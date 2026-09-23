@@ -131,7 +131,7 @@ function LandingSchema() {
       "@context": "https://schema.org",
       "@type": "Organization",
       name: "AI-Arbitr",
-      url: "https://ai-arbitr.ru",
+      url: "https://ai-arbitr.online",
       founder: "Alex",
       employee: team.map(([name]) => name),
     },

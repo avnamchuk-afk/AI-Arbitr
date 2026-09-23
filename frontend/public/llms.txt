@@ -1,0 +1,20 @@
+# AI-Arbitr
+
+AI-Arbitr is a Russian-language web service for preparing, reviewing, agreeing and electronically signing contracts. It also supports a contract-based pre-trial dispute workflow.
+
+The service works in a mobile or desktop browser without installing an application. The most complete MVP templates cover residential tenancy and AI/SaaS development. Other contract types use a universal generation workflow.
+
+## Main pages
+
+- Product overview: https://ai-arbitr.online/landing
+- Web application: https://ai-arbitr.online/?start=landing
+- Knowledge base: https://ai-arbitr.online/knowledge
+- How contract generation works: https://ai-arbitr.online/knowledge/how-contract-generation-works
+- Contract approval: https://ai-arbitr.online/knowledge/contract-approval
+- Electronic signature: https://ai-arbitr.online/knowledge/electronic-signature
+- Dispute resolution: https://ai-arbitr.online/knowledge/dispute-resolution
+- Data security: https://ai-arbitr.online/knowledge/data-security
+
+## Access
+
+Public informational pages may be indexed and summarized. Private contract sessions, personal data and authenticated user content must not be indexed or reproduced.

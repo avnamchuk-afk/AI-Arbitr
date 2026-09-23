@@ -1,4 +1,13 @@
 User-agent: *
 Allow: /
 
-Sitemap: http://51.250.95.80/sitemap.xml
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+Sitemap: https://ai-arbitr.online/sitemap.xml
