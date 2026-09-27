@@ -483,7 +483,259 @@ Backend использует стандартный `unittest`: сейчас 44 
 - README содержит старые Cloudflare tunnel URLs и местами более сильные заявления, чем подтверждено реализацией.
 - Нет schema migration history, background worker, transactional outbox, task queue и delivery status.
 
-# 1. End-to-end flow MVP
+# 19. План эволюции: «Договорились» и AI-Arbitr
+
+Этот раздел описывает целевую архитектуру и план миграции. В отличие от разделов 1–18, он не утверждает, что перечисленные компоненты уже реализованы. Главное ограничение: действующий AI-Arbitr и его данные продолжают работать на каждом этапе.
+
+## 19.1 AS-IS и повторное использование
+
+Фактический aggregate root системы — строка `sessions`, представленная ORM-классом `ContractSession`. Она уже связывает владельца, двух участников, общий диалог, версии юридического документа, приглашение, подписи, исполнение и спор. Поэтому создавать рядом независимый aggregate `dogovorilis_agreements` нельзя.
+
+Переиспользуются без копирования:
+
+| Существующая часть | Роль в общей модели Agreement |
+|---|---|
+| `sessions.id` | стабильный идентификатор Agreement в обоих интерфейсах |
+| `contract_participants` | стороны и их связь с аккаунтами |
+| `messages` | общий разговор сторон и AI, включая существующую историю |
+| `contract_versions` | представления `LEGAL_DOCUMENT`; не источник существенных условий |
+| approval/signature fields | подтверждение и подписание юридической версии |
+| invite token и email | начальный механизм присоединения второй стороны |
+| `pending_signing_content`, final version/hash | действующий signing/PDF pipeline |
+| auth cookie и `users` | общая идентичность для двух frontend-приложений |
+| Foundation Models gateway | общий AI transport/fallback, но не будущая orchestration layer |
+| analytics events | журнал продуктовых событий с добавлением surface/agreement state |
+
+Нельзя считать полноценной Agreement-моделью:
+
+- `SessionStatus` с тремя значениями: он описывает документ, но не переговоры и исполнение;
+- workflow, вычисляемый из текстовых маркеров `messages`;
+- свободный текст договора как единственный источник условий;
+- dispute, полностью восстановленный из строк `DISPUTE_*`;
+- `completed_at` участника как единственная модель исполнения.
+
+## 19.2 TO-BE: один aggregate, два UX
+
+На переходном этапе Agreement остаётся физически строкой `sessions`. В новом domain/API используется имя `Agreement`, а существующий `ContractSession` становится compatibility representation той же записи. Создание через `/agreements` и через `/sessions` всегда возвращает один и тот же UUID; открытие в другом интерфейсе не создаёт копию и не запускает миграцию данных.
+
+```text
+                    ┌─ «Договорились» frontend ─ /agreements API ─┐
+User/Auth/Cookie ───┤                                               ├─ Agreement aggregate (`sessions.id`)
+                    └─ AI-Arbitr frontend ──── /sessions API ──────┘
+                                                                      ├─ participants
+                                                                      ├─ messages
+                                                                      ├─ structured terms
+                                                                      ├─ legal documents/versions
+                                                                      ├─ performance facts/events
+                                                                      ├─ dispute/positions
+                                                                      └─ settlement
+```
+
+Новые поля `sessions` вводятся аддитивно и nullable/default-safe:
+
+- `lifecycle_state`: `intent`, `proposed_terms`, `agreed_terms`, `legal_document`, `signed`, `performance`, `dispute`, `settlement`;
+- `product_surface`: где объект был создан (`ai_arbitr` или `dogovorilis`), но не где он может открываться;
+- `intent_text` и `understanding_summary`;
+- `previous_agreement_id` для создания похожей договорённости;
+- `state_version` для optimistic concurrency;
+- timestamps ключевых переходов без удаления существующих `status/finalized_at/completed_at`.
+
+Старый `SessionStatus` сохраняется как compatibility projection. Например, `intent..legal_document` отображаются в `draft/in_review`, `signed..settlement` после подписания остаются совместимы с `finalized`. Новый workflow не должен выводить состояние обратно из текста сообщений.
+
+## 19.3 Минимальные новые доменные сущности
+
+Структура строится вокруг операций пользователей, а не механического переноса всех пунктов задания в таблицы.
+
+### AgreementTerm
+
+Структурированное условие до генерации юридического текста:
+
+- agreement, стабильный semantic key (`subject`, `price`, `deadline` и т. п.);
+- понятный сторонам label/value;
+- kind: essential/additional;
+- status: proposed/agreed/rejected/superseded;
+- автор: A, B или AI;
+- revision и timestamps.
+
+Подтверждения хранятся отдельно (`AgreementTermConfirmation`) по participant и revision. Условие становится agreed только после требуемых подтверждений обеих сторон. Юридический документ строится из agreed terms, но последующие версии документа не уничтожают их.
+
+### PerformanceEvent
+
+Единый журнал исполнения и фактов:
+
+- type и понятное описание;
+- actor/subject participant;
+- статус `claimed`, `confirmed`, `disputed`;
+- сумма/дата и расширяемый JSON payload;
+- связь с условием и предыдущим событием при необходимости.
+
+Подтверждение другой стороны хранится как отдельное действие. Evidence не требуется для confirmed/undisputed event и подключается только после оспаривания.
+
+### Dispute и Settlement
+
+Спор получает собственную запись, а не только message markers:
+
+- disputed performance events/terms;
+- позиции участников (`DisputePosition`);
+- выделенные AI undisputed/disputed facts;
+- предлагаемое урегулирование;
+- состояние и timestamps.
+
+`Settlement` содержит структурированный результат и подтверждения обеих сторон. Только после двух подтверждений он становится частью истории Agreement. Существующие `DISPUTE_*` markers сохраняются для старых объектов и compatibility UI, но новые записи становятся источником истины.
+
+### LegalDocument
+
+На первом этапе отдельная таблица не обязательна: `contract_versions` остаётся реализацией legal document revisions для одного Agreement. Когда понадобится несколько документов/допсоглашений, вводится контейнер `legal_documents`, а существующие версии связываются с автоматически созданным primary document без копирования текста.
+
+## 19.4 Conversation и knowledge layer
+
+`messages` остаётся общей хронологией, но ключевые ответы больше не собираются ad hoc внутри `main.py`.
+
+Вводится versioned каталог conversation scenarios:
+
+```text
+scenario key + version + lifecycle state + actor role
+→ allowed intents
+→ deterministic UX messages
+→ required domain command
+→ optional AI task/schema
+→ next-state hints
+```
+
+Сценарии покрывают как минимум understanding, term confirmation, invite, negotiation, signing, performance confirmation, dispute positions и settlement acceptance. Они тестируются snapshot/contract-тестами отдельно от LLM.
+
+AI orchestration получает:
+
+1. разрешённую задачу и JSON schema ответа;
+2. текущее состояние Agreement;
+3. agreed/proposed terms;
+4. последние релевантные сообщения обеих сторон;
+5. retrieved fragments публичной Knowledge Base;
+6. юридический контекст только для задач, где он нужен.
+
+Ответ модели не меняет состояние напрямую. Сначала он валидируется, затем domain command сохраняет terms/facts/positions. Продуктовые вопросы обслуживаются тем же conversation endpoint с retrieval по Knowledge Base; отдельный help-bot не создаётся.
+
+## 19.5 API boundary
+
+Новый API добавляется рядом со старым, а не заменяет его:
+
+```text
+POST   /agreements                         создать intent Agreement
+GET    /agreements                         список отношений для текущего пользователя
+GET    /agreements/{id}                    human-oriented projection
+POST   /agreements/{id}/conversation       intent routing + conversation scenario
+POST   /agreements/{id}/terms/{id}/confirm подтверждение/отклонение условия
+POST   /agreements/{id}/invite             присоединение второй стороны
+POST   /agreements/{id}/legal-document     построение документа из agreed terms
+POST   /agreements/{id}/performance-events заявить факт исполнения
+POST   /performance-events/{id}/confirm    подтвердить или оспорить факт
+POST   /agreements/{id}/disputes            открыть спор по disputed facts
+POST   /disputes/{id}/positions             позиция стороны
+POST   /disputes/{id}/settlement            сформировать предложение
+POST   /settlements/{id}/accept             принять результат
+POST   /agreements/{id}/continue            создать новый связанный Agreement
+```
+
+Имена и payload будут закрепляться OpenAPI contract-тестами до реализации frontend. Старые `/sessions`, `/review`, PDF и auth endpoints сохраняются. Access control всегда проверяется по общему `sessions.id` и `contract_participants`, независимо от вызывающего frontend.
+
+## 19.6 Frontend boundary
+
+Создаётся отдельное React-приложение `dogovorilis-frontend`; существующий `frontend` не переделывается и продолжает собираться как AI-Arbitr. Оба используют один backend и auth cookie domain.
+
+Минимальные пространства «Договорились»:
+
+- START: «О чём хотите договориться?» и одно поле;
+- «Договариваемся»: understanding и terms в разговоре;
+- «Договорились»: общее подтверждение, legal document и signing;
+- «Исполняем»: следующее действие, факты исполнения и подтверждения;
+- dispute/settlement внутри того же разговора;
+- dashboard «Мои договорённости» с контрагентом, предметом, состоянием и следующим действием;
+- контекстная ссылка «Открыть в AI-Arbitr» с тем же Agreement ID.
+
+Progressive auth использует существующего guest User. До сохранения/invite Agreement принадлежит guest; quick registration переносит этот же user/session, поэтому первое AI-взаимодействие не требует формы входа.
+
+## 19.7 Capability layer
+
+Paywall в core lifecycle не добавляется. Backend получает декларативные capabilities (`agreement.core`, `legal_document.advanced_edit`, `ai.model.select`, `organization.manage`, `api.access` и т. п.). На первом этапе все core capabilities разрешены, а существующий AI-Arbitr не ограничивается. Проверки capability централизуются и не зашиваются в frontend conditionals.
+
+## 19.8 Безопасный migration plan
+
+### Фаза A: migration foundation
+
+1. Подключить Alembic и зафиксировать baseline текущей production schema без пересоздания таблиц.
+2. Добавить nullable/default-safe поля `sessions` и новые таблицы terms/events/disputes/settlements.
+3. Оставить `Base.metadata.create_all()` только для тестовой/первичной среды, production schema изменять миграциями.
+4. Добавить backup/restore rehearsal и migration smoke test на копии schema.
+
+Rollback: код старой версии игнорирует новые поля/таблицы; destructive migration отсутствует.
+
+### Фаза B: domain facade
+
+1. Вынести Agreement queries/commands из новых endpoints в отдельный domain/application layer.
+2. Добавить adapter, который строит новый Agreement projection из старой session, participants, messages и versions.
+3. Dual-write только для новых структурированных действий; существующие endpoint semantics не менять.
+4. Ввести optimistic state transition и audit event на каждую команду.
+
+### Фаза C: additive API и AI orchestration
+
+1. Закрепить `/agreements` OpenAPI contract.
+2. Реализовать versioned conversation scenarios и structured LLM responses.
+3. Подключить Knowledge Base retrieval сначала как локальный индекс статических статей; внешний vector service для MVP не требуется.
+4. Добавить entitlement API с разрешёнными по умолчанию core capabilities.
+
+### Фаза D: отдельный frontend
+
+1. Добавить `dogovorilis-frontend` отдельным build/service.
+2. Настроить маршрут или отдельный host в Caddy, не меняя маршрутизацию AI-Arbitr.
+3. Использовать общий cookie и deep links `/agreements/{id}` ↔ AI-Arbitr `/?session={id}`.
+4. Сначала включить для test host/feature flag, затем для ограниченной аудитории.
+
+### Фаза E: новый lifecycle
+
+Реализовывать вертикальными срезами: intent/understanding → terms → joint negotiation → legal document/signing → performance facts → dispute/settlement → continuation. Каждый срез включает domain test, API integration test и mobile browser test. Не создавать все таблицы и UI заранее без проходящего сценария.
+
+### Фаза F: совместимость и rollout
+
+1. Прогнать существующие 44 backend tests и новый двухклиентный Agreement E2E.
+2. Проверить старые review links, подписи, PDF, SMTP fallback и dispute flow на production-like копии БД.
+3. Выполнить expand migration, deploy backward-compatible backend, deploy новый frontend; contract/cleanup migration проводить только после периода наблюдения.
+4. Метрики разделять по `product_surface`, сохраняя общую аналитику Agreement.
+
+## 19.9 Новый обязательный E2E
+
+Два изолированных клиента A/B должны пройти один тест без прямых изменений БД:
+
+```text
+A guest intent → AI understanding → A confirms → progressive auth → invite B
+→ B joins → essential terms confirmed by both → additional terms proposed/confirmed
+→ legal document generated → B signs → A signs
+→ A claims performance → B confirms (undisputed fact)
+→ A/B create conflicting claims (disputed fact)
+→ both submit positions → AI separates agreed/disputed facts
+→ settlement proposed → A accepts → B accepts
+→ settlement active → similar Agreement created with previous_agreement_id
+```
+
+Тест обязан дополнительно доказать:
+
+- один UUID открывается в обоих frontend projections;
+- AI не может записать term/fact/settlement без валидированной domain command;
+- подтверждение одного участника не считается согласием обоих;
+- старый ContractSession API продолжает читать legal document и signing state;
+- SMTP/LLM failure не откатывает уже подтверждённое действие.
+
+## 19.10 Решения, отложенные до реализации
+
+- публичное название/домен «Договорились»;
+- окончательный URL нового frontend;
+- необходимость отдельного `legal_documents` контейнера до появления второго документа;
+- vector search: для MVP достаточно локального retrieval по текущей Knowledge Base;
+- организации и многопользовательские роли;
+- доказательства-файлы и object storage;
+- automation/queue/reminders;
+- тарифы и конкретные entitlement limits.
+
+# 20. Текущий end-to-end flow MVP
 
 ## Шаг 1. A открывает сервис и создаёт договор
 
@@ -571,7 +823,7 @@ Backend использует стандартный `unittest`: сейчас 44 
 - DB: `DISPUTE_ACCEPTED` для каждого; после двух — `DISPUTE_CLOSED|agreement`, `is_completed=true`, completed timestamp.
 - External: при первом согласии email другой стороне, при втором — email обеим о завершении.
 
-# 2. Architecture map
+# 21. Текущая architecture map
 
 ```text
 React SPA (main.jsx / LandingPage / KnowledgeBase)
@@ -592,7 +844,7 @@ FastAPI → SMTP → magic links/invites/notices/PDF attachments
 FastAPI → Google Calendar URL (link only)
 ```
 
-# 3. MVP risks
+# 22. MVP risks
 
 1. **Party B identity assurance:** review signing authenticates B as the pre-created email user by possession of the invite token plus exact email match, but does not separately verify mailbox ownership at signing time.
 2. **Negotiation remains intentionally minimal:** B can propose text changes, but only A can turn them into a new contract version; there is no structured diff or per-clause acceptance.
