@@ -444,7 +444,7 @@ Frontend hashed assets cache immutable; HTML/config имеют no-cache. CI/CD p
 
 ## 17. Тесты
 
-Backend использует стандартный `unittest`: сейчас 44 теста в девяти файлах.
+Backend использует стандартный `unittest`: сейчас 45 тестов в десяти файлах, включая 44 существующих regression-теста и migration smoke test.
 
 Покрыты:
 
@@ -533,14 +533,14 @@ User/Auth/Cookie ───┤                                               ├�
 
 Новые поля `sessions` вводятся аддитивно и nullable/default-safe:
 
-- `lifecycle_state`: `intent`, `proposed_terms`, `agreed_terms`, `legal_document`, `signed`, `performance`, `dispute`, `settlement`;
+- `relationship_state`: lifecycle самого Agreement: `intent`, `negotiating`, `agreed`, `documenting`, `signed`, `performing`, `completed` или `terminated`;
 - `product_surface`: где объект был создан (`ai_arbitr` или `dogovorilis`), но не где он может открываться;
 - `intent_text` и `understanding_summary`;
-- `previous_agreement_id` для создания похожей договорённости;
+- `based_on_agreement_id` для необязательной связи «создано на основе Agreement»; несколько новых Agreement могут ссылаться на один источник, линейная последовательность не предполагается;
 - `state_version` для optimistic concurrency;
 - timestamps ключевых переходов без удаления существующих `status/finalized_at/completed_at`.
 
-Старый `SessionStatus` сохраняется как compatibility projection. Например, `intent..legal_document` отображаются в `draft/in_review`, `signed..settlement` после подписания остаются совместимы с `finalized`. Новый workflow не должен выводить состояние обратно из текста сообщений.
+Споры и урегулирования имеют независимые состояния в собственных сущностях. Agreement может оставаться `performing` во время и после одного или нескольких disputes/settlements; settlement изменяет условия или фиксирует результат, но не завершает отношения автоматически. Старый `SessionStatus` сохраняется как compatibility projection: `intent..documenting` отображаются в `draft/in_review`, а `signed..performing` совместимы с `finalized`. Новый workflow не должен выводить состояние обратно из текста сообщений.
 
 ## 19.3 Минимальные новые доменные сущности
 
@@ -550,14 +550,14 @@ User/Auth/Cookie ───┤                                               ├�
 
 Структурированное условие до генерации юридического текста:
 
-- agreement, стабильный semantic key (`subject`, `price`, `deadline` и т. п.);
+- agreement и расширяемый строковый `semantic_key` (`core.subject`, `payment.price`, `delivery.deadline` или namespaced ключ нового домена);
 - понятный сторонам label/value;
 - kind: essential/additional;
 - status: proposed/agreed/rejected/superseded;
 - автор: A, B или AI;
 - revision и timestamps.
 
-Подтверждения хранятся отдельно (`AgreementTermConfirmation`) по participant и revision. Условие становится agreed только после требуемых подтверждений обеих сторон. Юридический документ строится из agreed terms, но последующие версии документа не уничтожают их.
+`semantic_key` не является DB enum и не ограничивается CHECK constraint: новые типы условий добавляются каталогом/application code без migration. Значение хранится в расширяемом JSON payload с отдельным человекочитаемым представлением. Подтверждения хранятся отдельно (`AgreementTermConfirmation`) по participant и revision. Условие становится agreed только после требуемых подтверждений обеих сторон. Юридический документ строится из agreed terms, но последующие версии документа не уничтожают их.
 
 ### PerformanceEvent
 
@@ -591,18 +591,22 @@ User/Auth/Cookie ───┤                                               ├�
 
 `messages` остаётся общей хронологией, но ключевые ответы больше не собираются ad hoc внутри `main.py`.
 
-Вводится versioned каталог conversation scenarios:
+Вводится versioned каталог conversation scenarios с тремя режимами ответа:
+
+- `fixed`: неизменяемые подтверждения, предупреждения и критичные domain transitions;
+- `templated`: контролируемая структура с подстановкой проверенных domain values;
+- `generative`: естественный разговор, объяснения и уточнения через LLM в заданных границах и schema.
 
 ```text
 scenario key + version + lifecycle state + actor role
 → allowed intents
-→ deterministic UX messages
+→ response mode: fixed / templated / generative
+→ fixed text, template или AI task/schema
 → required domain command
-→ optional AI task/schema
 → next-state hints
 ```
 
-Сценарии покрывают как минимум understanding, term confirmation, invite, negotiation, signing, performance confirmation, dispute positions и settlement acceptance. Они тестируются snapshot/contract-тестами отдельно от LLM.
+Ключевые подтверждения и переходы состояния используют fixed/templated сценарии и тестируются snapshot/contract-тестами отдельно от LLM. Understanding, обычные вопросы, объяснения и совместное уточнение условий остаются generative: каталог контролирует задачу и допустимое действие, но не превращает разговор в набор canned responses. Сценарии покрывают как минимум understanding, term confirmation, invite, negotiation, signing, performance confirmation, dispute positions и settlement acceptance.
 
 AI orchestration получает:
 
@@ -713,7 +717,8 @@ A guest intent → AI understanding → A confirms → progressive auth → invi
 → A/B create conflicting claims (disputed fact)
 → both submit positions → AI separates agreed/disputed facts
 → settlement proposed → A accepts → B accepts
-→ settlement active → similar Agreement created with previous_agreement_id
+→ settlement active while Agreement may keep performing
+→ similar Agreement created with based_on_agreement_id
 ```
 
 Тест обязан дополнительно доказать:

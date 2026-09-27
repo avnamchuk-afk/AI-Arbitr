@@ -70,7 +70,8 @@ from app.workflows.contract import (
 )
 from app.workflows.dispute import parse_dispute_state
 
-Base.metadata.create_all(bind=engine)
+if settings.app_env != "production":
+    Base.metadata.create_all(bind=engine)
 
 
 def ensure_runtime_schema() -> None:
@@ -133,7 +134,8 @@ def ensure_runtime_schema() -> None:
                     connection.execute(text(f"ALTER TABLE contract_versions ADD COLUMN {column_name} {column_type}"))
 
 
-ensure_runtime_schema()
+if settings.app_env != "production":
+    ensure_runtime_schema()
 
 app = FastAPI(title="AI-Arbitr API", version=APP_VERSION)
 

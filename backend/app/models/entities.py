@@ -115,6 +115,14 @@ class ContractSession(Base):
     final_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     party_1_legal_role: Mapped[str | None] = mapped_column(String(80), nullable=True)
     party_2_legal_role: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    relationship_state: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    product_surface: Mapped[str] = mapped_column(String(32), default="ai_arbitr", index=True)
+    intent_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    understanding_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    based_on_agreement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=True, index=True
+    )
+    state_version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
@@ -196,3 +204,126 @@ class ContractVersion(Base):
     is_final: Mapped[bool] = mapped_column(Boolean, default=False)
 
     session: Mapped[ContractSession] = relationship(back_populates="versions")
+
+
+class AgreementTerm(Base):
+    __tablename__ = "agreement_terms"
+    __table_args__ = (UniqueConstraint("session_id", "semantic_key", "revision"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"), index=True)
+    semantic_key: Mapped[str] = mapped_column(String(160), index=True)
+    label: Mapped[str] = mapped_column(String(200))
+    value: Mapped[dict] = mapped_column(JSON, default=dict)
+    display_value: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(String(32), default="additional")
+    status: Mapped[str] = mapped_column(String(32), default="proposed", index=True)
+    proposed_by_participant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contract_participants.id"), nullable=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+class AgreementTermConfirmation(Base):
+    __tablename__ = "agreement_term_confirmations"
+    __table_args__ = (UniqueConstraint("term_id", "participant_id", "term_revision"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    term_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agreement_terms.id"), index=True)
+    participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contract_participants.id"), index=True
+    )
+    term_revision: Mapped[int] = mapped_column(Integer)
+    decision: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class PerformanceEvent(Base):
+    __tablename__ = "performance_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"), index=True)
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    description: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default="claimed", index=True)
+    actor_participant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contract_participants.id"), nullable=True
+    )
+    subject_participant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contract_participants.id"), nullable=True
+    )
+    term_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agreement_terms.id"), nullable=True
+    )
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class PerformanceEventConfirmation(Base):
+    __tablename__ = "performance_event_confirmations"
+    __table_args__ = (UniqueConstraint("event_id", "participant_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("performance_events.id"), index=True)
+    participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contract_participants.id"), index=True
+    )
+    decision: Mapped[str] = mapped_column(String(32))
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class AgreementDispute(Base):
+    __tablename__ = "agreement_disputes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sessions.id"), index=True)
+    opened_by_participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contract_participants.id")
+    )
+    status: Mapped[str] = mapped_column(String(32), default="collecting_positions", index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DisputePosition(Base):
+    __tablename__ = "dispute_positions"
+    __table_args__ = (UniqueConstraint("dispute_id", "participant_id", "revision"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dispute_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agreement_disputes.id"), index=True)
+    participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contract_participants.id"), index=True
+    )
+    content: Mapped[str] = mapped_column(Text)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class Settlement(Base):
+    __tablename__ = "settlements"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dispute_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agreement_disputes.id"), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="proposed", index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    terms: Mapped[dict] = mapped_column(JSON, default=dict)
+    proposed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SettlementConfirmation(Base):
+    __tablename__ = "settlement_confirmations"
+    __table_args__ = (UniqueConstraint("settlement_id", "participant_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    settlement_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("settlements.id"), index=True)
+    participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contract_participants.id"), index=True
+    )
+    accepted: Mapped[bool] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
